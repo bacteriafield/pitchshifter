@@ -143,3 +143,27 @@ if(BUILD_TESTS)
         ${CORE_DIR}/audio/vocal_chain.cpp ${CORE_DIR}/audio/preset.cpp)
     target_include_directories(effects_check PRIVATE ${SRC_DIR} ${CORE_DIR})
 endif()
+
+#############################################################################
+## GUI: the core as a Lua module (build/lib/pcore.so) for src/gui/main.lua
+##   cmake --build build --target pcore && lua src/gui/main.lua
+find_path(LUA_INCLUDE_DIR lua.h PATH_SUFFIXES lua5.4 lua54 lua-5.4 lua)
+if(LUA_INCLUDE_DIR)
+    file(STRINGS ${LUA_INCLUDE_DIR}/lua.h LUA_VERSION_NUM_LINE REGEX "^#define LUA_VERSION_NUM")
+endif()
+
+if(LUA_VERSION_NUM_LINE MATCHES "504")
+    file(GLOB PCORE_SOURCES
+        ${CORE_DIR}/audio/*.cpp
+        ${CORE_DIR}/audio/effects/*.cpp
+        ${CORE_DIR}/io/port_audio_driver.cpp)
+    add_library(pcore MODULE ${SRC_DIR}/gui/pcore_lua.cpp ${PCORE_SOURCES})
+    set_target_properties(pcore PROPERTIES PREFIX "")
+    target_include_directories(pcore PRIVATE ${SRC_DIR} ${CORE_DIR} ${LUA_INCLUDE_DIR}
+        ${PORTAUDIO_INCLUDE_DIRS} ${PORTAUDIO_INCLUDE_DIR})
+    # No liblua here on purpose: the module uses the interpreter's own Lua, and
+    # a second copy linked in crashes as soon as both touch the same state.
+    target_link_libraries(pcore PRIVATE ${PORTAUDIO_LIBRARIES} ${PORTAUDIO_LIBRARY})
+else()
+    message(STATUS "Lua 5.4 headers not found (set LUA_INCLUDE_DIR) -- skipping the pcore GUI module")
+endif()
