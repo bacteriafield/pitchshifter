@@ -39,11 +39,20 @@ extern "C" {
 
 static const char* kUserPresets = "presets.txt";
 
-static void printPresets(const PCore::PresetLibrary& lib) {
+// Factory presets first, then user presets: the numbering the commands use.
+static std::vector<const PCore::Preset*> allPresets(const PCore::PresetBank& bank) {
+    std::vector<const PCore::Preset*> list;
+    for (const PCore::Preset& p : PCore::PresetBank::factory()) list.push_back(&p);
+    for (const PCore::Preset& p : bank.user()) list.push_back(&p);
+    return list;
+}
+
+static void printPresets(const PCore::PresetBank& bank) {
     std::cout << "\nPresets:\n";
-    const size_t factoryCount = PCore::PresetLibrary::factory().size();
-    for (size_t i = 0; i < lib.count(); ++i) {
-        std::cout << "  " << (i < 10 ? " " : "") << i << "  " << lib.at(i).name
+    const size_t factoryCount = PCore::PresetBank::factory().size();
+    const auto list = allPresets(bank);
+    for (size_t i = 0; i < list.size(); ++i) {
+        std::cout << "  " << (i < 10 ? " " : "") << i << "  " << list[i]->name
                   << (i < factoryCount ? "" : "   (user)") << "\n";
     }
 }
@@ -86,21 +95,21 @@ int main() {
         return -1;
     }
 
-    PCore::PresetLibrary lib;
+    PCore::PresetBank bank;
     std::string loadErr;
-    if (lib.load(kUserPresets, &loadErr))
+    if (bank.load(kUserPresets, &loadErr))
         std::cout << "loaded user presets from " << kUserPresets << "\n";
     else
         logger_log(logger, Info, "Main", "Presets", loadErr.c_str());
 
-    PCore::applyPreset(engine.chain(), lib.at(0));
+    engine.chain().loadPreset(PCore::PresetBank::factory().front());
 
     char buf[160];
     snprintf(buf, sizeof(buf), "in=%.1fms out=%.1fms", drv->inputLatencySec() * 1000.0,
              drv->outputLatencySec() * 1000.0);
     std::cout << "running, round trip " << buf << "\n";
-    std::cout << "preset 0: " << lib.at(0).name << "\n";
-    printPresets(lib);
+    std::cout << "preset 0: " << PCore::PresetBank::factory().front().name << "\n";
+    printPresets(bank);
     printHelp();
 
     std::string line;
@@ -113,16 +122,16 @@ int main() {
         if (cmd == "quit" || cmd == "q") break;
 
         if (cmd == "help") { printHelp(); continue; }
-        if (cmd == "list") { printPresets(lib); continue; }
+        if (cmd == "list") { printPresets(bank); continue; }
 
         if (cmd == "voices") {
-            for (int i = 0; i < PCore::Voice::CharacterCount; ++i)
-                std::cout << "  " << i << "  " << PCore::Voice::characterName(i) << "\n";
+            for (int i = 0; i < PCore::Voice::TypeCount; ++i)
+                std::cout << "  " << i << "  " << PCore::Voice::typeName(i) << "\n";
             continue;
         }
 
         if (cmd == "fx") {
-            for (int i = 0; i < PCore::VocalChain::FxCount; ++i)
+            for (int i = 0; i < PCore::VocalChain::FxTypeCount; ++i)
                 std::cout << "  " << i << "  " << PCore::VocalChain::fxName(i) << "\n";
             continue;
         }
@@ -131,11 +140,10 @@ int main() {
             std::string path;
             float value = 0.0f;
             if (!(in >> path >> value)) { std::cout << "usage: set <path> <value>\n"; continue; }
-            if (!PCore::VocalChain::isKnown(path)) {
+            if (!engine.chain().set(path, value)) {
                 std::cout << "unknown parameter '" << path << "'\n";
                 continue;
             }
-            engine.chain().set(path, value);
             std::cout << path << " = " << value << "\n";
             continue;
         }
@@ -145,19 +153,21 @@ int main() {
             std::getline(in >> std::ws, name);
             if (name.empty()) { std::cout << "usage: save <name>\n"; continue; }
 
-            lib.addOrReplace(PCore::capturePreset(engine.chain(), name));
             std::string saveErr;
-            if (lib.save(kUserPresets, &saveErr)) std::cout << "saved '" << name << "'\n";
-            else                                  std::cout << saveErr << "\n";
+            if (bank.store(engine.chain().snapshot(name), &saveErr) && bank.save(kUserPresets, &saveErr))
+                std::cout << "saved '" << name << "'\n";
+            else
+                std::cout << saveErr << "\n";
             continue;
         }
 
         // Otherwise: a preset number
         try {
             const size_t n = static_cast<size_t>(std::stoul(cmd));
-            if (n >= lib.count()) { std::cout << "no preset " << n << "\n"; continue; }
-            PCore::applyPreset(engine.chain(), lib.at(n));
-            std::cout << "preset " << n << ": " << lib.at(n).name << "\n";
+            const auto list = allPresets(bank);
+            if (n >= list.size()) { std::cout << "no preset " << n << "\n"; continue; }
+            engine.chain().loadPreset(*list[n]);
+            std::cout << "preset " << n << ": " << list[n]->name << "\n";
         } catch (const std::exception&) {
             std::cout << "unknown command '" << cmd << "' -- try 'help'\n";
         }

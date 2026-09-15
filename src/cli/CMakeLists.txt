@@ -2,10 +2,11 @@
 add_executable(PitchShifter main.cpp)
 
 ## Link with core lib
-target_link_libraries(PitchShifter PRIVATE PitchShifter::Core ${QT_LIBS})
-
-## Include directories
-target_include_directories(PitchShifter PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(PitchShifter
+    PRIVATE
+        PitchShifter::Core
+        PitchShifter::Logger
+)
 
 ## Install
-install(TARGETS PitchShifter RUNTIME DESTINATION bin)
+install(TARGETS PitchShifter RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
