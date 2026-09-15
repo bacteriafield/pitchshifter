@@ -23,6 +23,9 @@
 
 */
 
+#ifndef PCORE_RT_AUDIO_BLOCK_H
+#define PCORE_RT_AUDIO_BLOCK_H
+
 #include <cstdint>
 
 struct AudioBlock {
@@ -31,3 +34,5 @@ struct AudioBlock {
     unsigned long frames = 0;
     uint64_t frameIndex = 0; // running index for diagnostics
 };
+
+#endif // PCORE_RT_AUDIO_BLOCK_H

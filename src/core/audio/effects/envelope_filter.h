@@ -23,10 +23,8 @@
 
 */
 
-// Ported from torvalds/AudioNoise audio/compressor.h (GPL-2.0). See NOTICE.
-
-#ifndef PCORE_EFFECTS_COMPRESSOR_H
-#define PCORE_EFFECTS_COMPRESSOR_H
+#ifndef PCORE_EFFECTS_ENVELOPE_FILTER_H
+#define PCORE_EFFECTS_ENVELOPE_FILTER_H
 
 #include "../audio_node.h"
 #include "dsp.h"
@@ -36,14 +34,13 @@
 
 namespace PCore {
     //
-    // Envelope follower with separate attack/release half-lives. Above the
-    // threshold the gain target is (level/env) ^ (1 - 1/ratio), and that
-    // target is itself smoothed so the gain never steps.
+    // Auto-wah: a bandpass whose centre frequency rides the input envelope.
+    // Sing louder, the filter opens.
     //
-    class Compressor : public AudioNode {
+    class EnvelopeFilter : public AudioNode {
     public:
-        explicit Compressor(int sampleRate);
-        virtual ~Compressor() = default;
+        explicit EnvelopeFilter(int sampleRate);
+        virtual ~EnvelopeFilter() = default;
 
         void prepare(int sampleRate, int maxBlock, int inChans, int outChans) override;
         void process(const float* const* in, float* const* out, unsigned long frames) override;
@@ -53,21 +50,21 @@ namespace PCore {
     private:
         int sampleRate_;
 
-        float thresholdDb_ = -20.0f; // -40 .. 0 dB
-        float attackMs_    = 15.0f;  // 2 .. 100 ms
-        float releaseMs_   = 150.0f; // 50 .. 500 ms
-        float ratio_       = 4.0f;   // 1 .. 20
-        float makeupDb_    = 6.0f;   // 0 .. 24 dB
+        float minHz_     = 250.0f;   // filter frequency at silence
+        float maxHz_     = 3000.0f;  // filter frequency at full tilt
+        float sensitivity_ = 6.0f;   // how hard the envelope pushes
+        float q_         = 2.0f;
+        float attackMs_  = 8.0f;
+        float releaseMs_ = 120.0f;
+        float mix_       = 1.0f;
 
-        float level_        = 0.0f;
         float attackCoeff_  = 0.0f;
         float releaseCoeff_ = 0.0f;
-        float ratioExp_     = 0.0f;  // 1 - 1/ratio
-        float makeup_       = 1.0f;
 
         struct ChannelState {
             float env = 0.0f;
-            float gain = 1.0f;
+            float x[2] = { 0.0f, 0.0f };
+            float y[2] = { 0.0f, 0.0f };
         };
         std::vector<ChannelState> channels_;
 
@@ -75,4 +72,4 @@ namespace PCore {
     };
 }
 
-#endif // PCORE_EFFECTS_COMPRESSOR_H
+#endif // PCORE_EFFECTS_ENVELOPE_FILTER_H

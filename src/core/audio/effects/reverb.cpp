@@ -29,18 +29,16 @@
 #include <algorithm>
 
 namespace PCore {
+	static constexpr float kMaxTimeS = 1.5f;
     Reverb::Reverb(int sampleRate) : sampleRate_(sampleRate) {}
 
     void Reverb::prepare(int sr, int block, int inCh, int outCh) {
 		sampleRate_ = sr;
 
-		// Buffer lenght was based on longest delay line (tap3) + margin
-		const size_t d1 = secToSamples(baseTime_);
-		const size_t d2 = secToSamples(baseTime_ * t2mul_);
-		const size_t d3 = secToSamples(baseTime_ * t3mul_);
-		const size_t maxDelay = std::max(d1, std::max(d2, d3));
-
-		const size_t total = std::max<size_t>(maxDelay + 8, 1024);
+		// Sized for the longest time_s up front, so setParameters never
+		// reallocates on the audio thread.
+		const double maxMul = std::max({ 1.0, static_cast<double>(t2mul_), static_cast<double>(t3mul_) });
+		const size_t total = std::max<size_t>(secToSamples(static_cast<float>(kMaxTimeS * maxMul)) + 8, 1024);
 		dBuffer_.assign(total, 0.0f);
 		writePos_ = 0;
 	}
@@ -97,16 +95,7 @@ namespace PCore {
 		} else if (param == "mix") {
 			mix_ = std::clamp(value, 0.0f, 1.0f);
 		} else if (param == "time_s") {
-			baseTime_ = std::clamp(value, 0.05f, 1.5f);
-			const size_t d1 = secToSamples(baseTime_);
-			const size_t d2 = secToSamples(baseTime_ * t2mul_);
-			const size_t d3 = secToSamples(baseTime_ * t3mul_);
-			const size_t maxDelay = std::max(d1, std::max(d2, d3));
-			const size_t total = std::max<size_t>(maxDelay + 8, 1024);
-			if (dBuffer_.size() != total) {
-				dBuffer_.assign(total, 0.0f);
-				writePos_ = 0;
-			}
+			baseTime_ = std::clamp(value, 0.05f, kMaxTimeS);
 		}
 	}
 };

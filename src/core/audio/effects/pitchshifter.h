@@ -23,50 +23,59 @@
 
 */
 
+// Ported from torvalds/AudioNoise audio/pitch.h (GPL-2.0). See NOTICE.
+
 #ifndef PITCHSHIFTER_H
 #define PITCHSHIFTER_H
 
 #include "../audio_node.h"
+#include "dsp.h"
 
-#include <vector>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace PCore {
+    //
+    // Walk the delay line at a different speed than it is written: backwards
+    // lowers the pitch, forwards raises it. Two taps half a grain apart are
+    // windowed with sin and cos so each one's wrap-around discontinuity lands
+    // where its own window is zero; sin^2 + cos^2 == 1 keeps the power flat.
+    //
+    // No FFT, no latency -- one sample in, one sample out.
+    //
     class PitchShifter : public AudioNode {
-        private:
-            // Parameters
-			int   sampleRate_   = 44100;
-			float pitchRatio_   = 1.0f;   // scalar ratio from semitones
-			float formantRatio_ = 1.0f;   // placeholder (not applied in this time-domain shifter)
-			float mix_          = 1.0f;   // 0..1 wet
+    public:
+        explicit PitchShifter(int sampleRate);
+        virtual ~PitchShifter() = default;
 
-			// Windowed dual-buffer state
-			std::vector<float> buffer1_;
-			std::vector<float> buffer2_;
-			std::vector<float> window_;   // Hann
-			int    bufferSize_ = 0;       // in samples
-			int    writePos_   = 0;
-			float  readPos1_   = 0.0f;
-			float  readPos2_   = 0.0f;
-			float  crossfade_  = 0.0f;    // 0..2.0 cycles
+        void prepare(int sampleRate, int maxBlock, int inChans, int outChans) override;
+        void process(const float* const* in, float* const* out, unsigned long frames) override;
 
-			// Helpers
-			void rebuildWindow();         // rebuild Hann window for current bufferSize_
-			inline float hannAt(int idx) const;
+        void setParameters(const std::string& param, float value);
 
+        // This shifter reads and writes the same sample, so there is none.
+        int latencySamples() const { return 0; }
 
-        public:
-            explicit PitchShifter(int sampleRate);
+    private:
+        // Grain length. 4096 samples is ~85ms at 48kHz.
+        static const int DISCONT_SHIFT = 12;
+        static const int DISCONT_STEPS = 1 << DISCONT_SHIFT;
 
-			// AudioNode API
-			void prepare(int sr, int block, int inCh, int outCh) override;
-			void process(const float* const* in, float* const* out, unsigned long frames) override;
+        int sampleRate_;
 
-			// Parameters (public API)
-			void setParameters(const std::string& param, float value);
+        float octave_ = 0.0f;  // -2 .. +2
+        float mix_    = 1.0f;
 
-			// Latency in samples (useful for DAW compensation or alignment)
-			int latencySamples() const;
+        float step_ = 0.0f;    // 2^octave - 1
+
+        struct ChannelState {
+            dsp::DelayLine line;
+            uint32_t phase = 0;
+        };
+        std::vector<ChannelState> channels_;
+
+        void recalculate();
     };
 }
 

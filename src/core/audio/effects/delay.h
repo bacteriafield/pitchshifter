@@ -23,31 +23,51 @@
 
 */
 
+// Ported from torvalds/AudioNoise audio/echo.h (GPL-2.0). See NOTICE.
+
 #ifndef DELAY_H
 #define DELAY_H
 
-#include <vector>
-#include <string>
-
 #include "../audio_node.h"
+#include "dsp.h"
 
+#include <string>
+#include <vector>
 
 namespace PCore {
+    //
+    // Minimal echo: one long delay line with feedback. The delay time itself
+    // is slewed towards its target so turning the knob glides instead of
+    // clicking.
+    //
     class Delay : public AudioNode {
-        private:
-            std::vector<float> dBuffer_;
-            int sampleRate_ = 44100;
-            int dTimeMs_ = 250;  //ms
-            int writePos_ = 0;
-            float feedback_ = 0.35f;
-            float mix_ = 0.3f;
+    public:
+        explicit Delay(int sampleRate);
+        virtual ~Delay() = default;
 
-            
-        public:
-            explicit Delay(int sampleRate);
-            void prepare(int sr, int block, int inCh, int outCh) override;
-            void process(const float* const* in, float* const* out, unsigned long frames) override;
-            void setParameters(const std::string& param, float value);
+        void prepare(int sampleRate, int maxBlock, int inChans, int outChans) override;
+        void process(const float* const* in, float* const* out, unsigned long frames) override;
+
+        void setParameters(const std::string& param, float value);
+
+    private:
+        int sampleRate_;
+
+        float timeMs_   = 250.0f; // 0 .. 1000 ms
+        float feedback_ = 0.35f;  // 0 .. 1
+        float mix_      = 0.3f;   // 0 .. 1 (the original's "depth")
+        float tone_     = 1.0f;   // 1 = clean digital repeats, lower = darker analog
+
+        float targetDelay_ = 0.0f; // samples
+
+        struct ChannelState {
+            dsp::DelayLine line;
+            float delay = 0.0f;    // slewed towards targetDelay_
+            float lp    = 0.0f;    // tone filter state
+        };
+        std::vector<ChannelState> channels_;
+
+        void recalculate();
     };
 }
 

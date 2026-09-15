@@ -23,58 +23,54 @@
 
 */
 
+// Ported from torvalds/AudioNoise audio/eq.h (GPL-2.0). See NOTICE.
+
 #ifndef PCORE_EFFECTS_EQ_H
 #define PCORE_EFFECTS_EQ_H
 
 #include "../audio_node.h"
-#include <vector>
+#include "dsp.h"
+
 #include <string>
+#include <vector>
 
 namespace PCore {
-    // Simple 3-band EQ using Biquad filters
+    //
+    // Ten-band graphic EQ on octave centres from 31.25Hz to 16kHz: a low
+    // shelf, eight peaking bands and a high shelf. Bands that disagree with
+    // their neighbours get a higher Q, so a lone boost stays narrow while a
+    // whole tilted curve stays smooth.
+    //
     class Eq : public AudioNode {
     public:
-        Eq(int sampleRate);
+        static const int NUM_BANDS = 10;
+
+        explicit Eq(int sampleRate);
         virtual ~Eq() = default;
 
         void prepare(int sampleRate, int maxBlock, int inChans, int outChans) override;
         void process(const float* const* in, float* const* out, unsigned long frames) override;
 
+        // Gain in dB, -20 .. +20. Band 0 is 31.25Hz, band 9 is 16kHz.
+        void setBandGain(int band, float db);
+        float bandFrequency(int band) const;
+
+        // "band0".."band9", plus "low"/"mid"/"high" for the shelves and 1kHz.
         void setParameters(const std::string& param, float value);
 
     private:
-        struct Biquad {
-            float b0 = 0, b1 = 0, b2 = 0;
-            float a1 = 0, a2 = 0;
-            float z1 = 0, z2 = 0;
-
-            void processBlock(const float* in, float* out, unsigned long frames);
-            void reset() { z1 = 0; z2 = 0; }
-        };
-
         int sampleRate_;
 
-        // Gains in dB
-        float lowGain_ = 0.0f;
-        float midGain_ = 0.0f;
-        float highGain_ = 0.0f;
+        float gainsDb_[NUM_BANDS] = {};
 
-        // Crossover/center frequencies
-        float lowFreq_ = 100.0f;  // Low Shelf cutoff
-        float midFreq_ = 1000.0f; // Peaking center
-        float highFreq_ = 5000.0f; // High Shelf cutoff
-        
-        // Q factor for mid peaking
-        float midQ_ = 0.707f;
+        struct ChannelState {
+            dsp::Biquad bands[NUM_BANDS];
+        };
+        std::vector<ChannelState> channels_;
 
-        // Per-channel filters: 3 filters per channel (Low, Mid, High)
-        // Stored as channel -> vector of 3 Biquads
-        std::vector<std::vector<Biquad>> filters_;
+        dsp::BiquadCoeff coeff_[NUM_BANDS];
 
-        void recalculateCoefficients();
-        void calculateLowShelf(Biquad& f, float freq, float currentGainDB);
-        void calculatePeaking(Biquad& f, float freq, float Q, float currentGainDB);
-        void calculateHighShelf(Biquad& f, float freq, float currentGainDB);
+        void recalculate();
     };
 }
 

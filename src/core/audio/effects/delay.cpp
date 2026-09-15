@@ -23,53 +23,74 @@
 
 */
 
-#include <cmath>
-#include <algorithm>
+// Ported from torvalds/AudioNoise audio/echo.h (GPL-2.0). See NOTICE.
 
 #include "delay.h"
 
-namespace PCore {
-    Delay::Delay(int sampleRate) : sampleRate_(sampleRate) {}
+#include <algorithm>
 
-    void Delay::prepare(int sr, int block, int inCh, int outCh) {
-        sampleRate_ = sr;
-        size_t delaySamples = static_cast<size_t>(std::max(1, (int)std::lround(dTimeMs_ * 0.001 * sampleRate_)));
-        dBuffer_.assign(delaySamples, 0.0f);
-        writePos_ = 0;
+namespace PCore {
+
+    static constexpr float kMaxDelayMs = 1000.0f;
+    // One pole towards the new delay time -- about 1s to settle at 48kHz.
+    static constexpr float kSlew = 0.001f;
+
+    Delay::Delay(int sampleRate) : sampleRate_(sampleRate) {
+        recalculate();
+    }
+
+    void Delay::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
+        sampleRate_ = sampleRate;
+        channels_.assign(std::max(1, std::max(inChans, outChans)), ChannelState());
+
+        const size_t history = static_cast<size_t>(kMaxDelayMs * 0.001f * sampleRate_) + 4;
+        recalculate();
+        for (ChannelState& st : channels_) {
+            st.line.resize(history);
+            st.delay = targetDelay_;   // start settled, don't sweep in on boot
+        }
+    }
+
+    void Delay::recalculate() {
+        targetDelay_ = timeMs_ * 0.001f * static_cast<float>(sampleRate_);
+    }
+
+    void Delay::setParameters(const std::string& param, float value) {
+        if (param == "time_ms" || param == "time" || param == "delay") {
+            timeMs_ = std::clamp(value, 0.0f, kMaxDelayMs);
+            recalculate();
+        }
+        else if (param == "feedback") feedback_ = std::clamp(value, 0.0f, 1.0f);
+        else if (param == "mix" || param == "depth") mix_ = std::clamp(value, 0.0f, 1.0f);
+        else if (param == "tone") tone_ = std::clamp(value, 0.05f, 1.0f);
     }
 
     void Delay::process(const float* const* in, float* const* out, unsigned long frames) {
         if (!out || !out[0]) return;
 
-        const float* x = (in && in[0]) ? in[0] : nullptr;
-        float* y = out[0];
+        const size_t numC = channels_.size();
+        for (size_t c = 0; c < numC; ++c) {
+            float* outp = out[c];
+            if (!outp) break;
 
-        if (!x) { std::fill_n(y, frames, 0.0f); return; }
+            const float* inp = (in && in[c]) ? in[c] : nullptr;
+            if (!inp) { std::fill_n(outp, frames, 0.0f); continue; }
 
-        const size_t delayLen = dBuffer_.size();
-        if (delayLen == 0) { std::copy(x, x + frames, y); return; }
+            ChannelState& st = channels_[c];
+            for (unsigned long i = 0; i < frames; ++i) {
+                const float x = inp[i];
 
-        size_t wp = static_cast<size_t>(writePos_);
-        for (unsigned long i = 0; i < frames; ++i) {
-            float d = dBuffer_[wp];
-            float v = x[i] + feedback_ * d;        // feedback
-            dBuffer_[wp] = v;
-            y[i] = (1.0f - mix_) * x[i] + mix_ * d; // mix signal dry + signal wet
-            wp = (wp + 1) % delayLen;
-        }
-        writePos_ = static_cast<int>(wp);
-    }
+                st.delay = dsp::lerp(kSlew, st.delay, targetDelay_);
 
-    void Delay::setParameters(const std::string& param, float value) {
-        if (param == "time_ms") {
-            dTimeMs_ = std::max(1, (int)std::lround(value));
-            size_t delaySamples = static_cast<size_t>(std::max(1, (int)std::lround(dTimeMs_ * 0.001 * sampleRate_)));
-            dBuffer_.assign(delaySamples, 0.0f);
-            writePos_ = 0;
-        } else if (param == "feedback") {
-            feedback_ = std::clamp(value, 0.0f, 0.95f);
-        } else if (param == "mix") {
-            mix_ = std::clamp(value, 0.0f, 1.0f);
+                // One-pole low-pass on the repeats. tone 1 leaves a clean digital
+                // echo; lower values darken every trip round the loop, the way a
+                // bucket-brigade analog delay does.
+                st.lp += tone_ * (st.line.read(1.0f + st.delay) - st.lp);
+                const float wet = st.lp;
+                st.line.write(dsp::limit(x + wet * feedback_));
+
+                outp[i] = dsp::lerp(mix_, x, wet);
+            }
         }
     }
-};
+}

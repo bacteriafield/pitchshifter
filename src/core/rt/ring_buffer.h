@@ -23,6 +23,9 @@
 
 */
 
+#ifndef PCORE_RT_RING_BUFFER_H
+#define PCORE_RT_RING_BUFFER_H
+
 #include <vector>
 #include <atomic>
 #include <cstddef>
@@ -56,3 +59,5 @@ class SpscRing {
         size_t mask_;
         std::atomic<size_t> head_, tail_;
 };
+
+#endif // PCORE_RT_RING_BUFFER_H

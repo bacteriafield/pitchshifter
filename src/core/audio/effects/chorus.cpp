@@ -27,14 +27,17 @@
 #include "chorus.h"
 
 namespace PCore {
+
+    static constexpr float kMaxBaseMs  = 50.0f;
+    static constexpr float kMaxDepthMs = 25.0f;
     Chorus::Chorus(int sampleRate) : sampleRate_(sampleRate) {}
 
     void Chorus::prepare(int sr, int block, int inCh, int outCh) {
         sampleRate_ = sr;
 
-        const size_t baseSmp = msToSamples(static_cast<float>(baseDelayMs_));
-        const size_t depthSmp = msToSamples(depthMs_);
-        const size_t total  = std::max<size_t>(baseSmp + depthSmp + 8, 256);
+        // Sized for the largest base delay and depth up front, so changing
+        // either later never reallocates on the audio thread.
+        const size_t total = msToSamples(kMaxBaseMs + kMaxDepthMs) + 8;
 
         dBuffer_.assign(total, 0.0f);
         writePos_ = 0;
@@ -55,7 +58,7 @@ namespace PCore {
         const size_t N = dBuffer_.size();
         if (N == 0) { std::copy(x, x + frames, y); return; }
 
-        const float twoPi = M_PI * M_PI;
+        const float twoPi = 2.0f * M_PI;
         const float phaseInc = twoPi * (lfoRate_ / static_cast<float>(sampleRate_));
 
         const float baseSmpF  = static_cast<float>(msToSamples(static_cast<float>(baseDelayMs_)));
@@ -99,25 +102,11 @@ namespace PCore {
         if (param == "lfo_rate_hz") {
             lfoRate_ = std::clamp(value, 0.05f, 5.0f);
         } else if (param == "depth_ms") {
-            depthMs_ = std::clamp(value, 1.0f, 25.0f);
-            const size_t baseSmp  = msToSamples(static_cast<float>(baseDelayMs_));
-            const size_t depthSmp = msToSamples(depthMs_);
-            const size_t total    = std::max<size_t>(baseSmp + depthSmp + 8, 256);
-            if (dBuffer_.size() != total) {
-                dBuffer_.assign(total, 0.0f);
-                writePos_ = 0;
-            }
+            depthMs_ = std::clamp(value, 1.0f, kMaxDepthMs);
         } else if (param == "mix") {
             mix_ = std::clamp(value, 0.0f, 1.0f);
         } else if (param == "base_delay_ms") {
-            baseDelayMs_ = std::max(1, (int)std::lround(value));
-            const size_t baseSmp  = msToSamples(static_cast<float>(baseDelayMs_));
-            const size_t depthSmp = msToSamples(depthMs_);
-            const size_t total    = std::max<size_t>(baseSmp + depthSmp + 8, 256);
-            if (dBuffer_.size() != total) {
-                dBuffer_.assign(total, 0.0f);
-                writePos_ = 0;
-            }
+            baseDelayMs_ = std::clamp(static_cast<int>(std::lround(value)), 1, static_cast<int>(kMaxBaseMs));
         }
     }
 };

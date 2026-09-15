@@ -23,44 +23,39 @@
 
 */
 
-// Ported from torvalds/AudioNoise audio/phaser.h (GPL-2.0). See NOTICE.
-
-#include "phaser.h"
+#include "envelope_filter.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace PCore {
 
-    Phaser::Phaser(int sampleRate) : sampleRate_(sampleRate) {
+    EnvelopeFilter::EnvelopeFilter(int sampleRate) : sampleRate_(sampleRate) {
         recalculate();
     }
 
-    void Phaser::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
+    void EnvelopeFilter::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
         sampleRate_ = sampleRate;
         channels_.assign(std::max(1, std::max(inChans, outChans)), ChannelState());
         recalculate();
     }
 
-    void Phaser::recalculate() {
-        for (ChannelState& st : channels_)
-            st.lfo.setFreq(rateHz_, sampleRate_);
+    void EnvelopeFilter::recalculate() {
+        attackCoeff_  = dsp::timeConstant(attackMs_, sampleRate_);
+        releaseCoeff_ = dsp::timeConstant(releaseMs_, sampleRate_);
     }
 
-    void Phaser::setParameters(const std::string& param, float value) {
-        if (param == "rate")          rateHz_ = std::clamp(value, 0.5f, 40.0f);
-        else if (param == "lfo_ms")   rateHz_ = 1000.0f / std::clamp(value, 25.0f, 2000.0f);
-        else if (param == "freq")   { centerHz_ = std::clamp(value, 220.0f, 6460.0f); return; }
-        else if (param == "depth" || param == "octaves")
-                                    { octaves_  = std::clamp(value, 0.0f, 2.0f); return; }
-        else if (param == "q")      { q_        = std::clamp(value, 0.25f, 2.0f); return; }
-        else if (param == "feedback") { feedback_ = std::clamp(value, 0.0f, 0.75f); return; }
-        else if (param == "mix")    { mix_      = std::clamp(value, 0.0f, 1.0f); return; }
-        else return;
-        recalculate();
+    void EnvelopeFilter::setParameters(const std::string& param, float value) {
+        if (param == "min_hz")           minHz_ = std::clamp(value, 80.0f, 2000.0f);
+        else if (param == "max_hz")      maxHz_ = std::clamp(value, 200.0f, 8000.0f);
+        else if (param == "sensitivity") sensitivity_ = std::clamp(value, 0.5f, 40.0f);
+        else if (param == "q")           q_ = std::clamp(value, 0.5f, 8.0f);
+        else if (param == "attack")    { attackMs_  = std::clamp(value, 1.0f, 100.0f); recalculate(); }
+        else if (param == "release")   { releaseMs_ = std::clamp(value, 20.0f, 800.0f); recalculate(); }
+        else if (param == "mix")         mix_ = std::clamp(value, 0.0f, 1.0f);
     }
 
-    void Phaser::process(const float* const* in, float* const* out, unsigned long frames) {
+    void EnvelopeFilter::process(const float* const* in, float* const* out, unsigned long frames) {
         if (!out || !out[0]) return;
 
         const float nyquist = 0.45f * static_cast<float>(sampleRate_);
@@ -79,16 +74,19 @@ namespace PCore {
             for (unsigned long i = 0; i < frames; ++i) {
                 const float x = inp[i];
 
-                const float lfo  = st.lfo.step(dsp::LfoShape::Triangle);
-                const float freq = std::clamp(std::exp2(lfo * octaves_) * centerHz_, 20.0f, nyquist);
+                const float mag  = std::fabs(x);
+                const float coef = (mag > st.env) ? attackCoeff_ : releaseCoeff_;
+                st.env = dsp::lerp(coef, mag, st.env);
 
-                coeff.allpass(dsp::omega(freq, sampleRate_), q_);
+                // Envelope drives the sweep, saturating so a shout doesn't
+                // slam the filter straight into Nyquist.
+                const float drive = dsp::limit(st.env * sensitivity_);
+                const float freq  = std::clamp(dsp::lerp(drive, minHz_, maxHz_), 20.0f, nyquist);
 
-                float y = x + feedback_ * st.s[NUM_STAGES][0];
-                for (int s = 0; s < NUM_STAGES; ++s)
-                    y = coeff.step(y, st.s[s], st.s[s + 1]);
+                coeff.peaking(dsp::omega(freq, sampleRate_), q_, 8.0f);
+                const float y = coeff.step(x, st.x, st.y);
 
-                outp[i] = dsp::lerp(mix_, x, dsp::limit(x + y));
+                outp[i] = dsp::lerp(mix_, x, y);
             }
         }
     }

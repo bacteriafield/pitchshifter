@@ -23,51 +23,42 @@
 
 */
 
-// Ported from torvalds/AudioNoise audio/flanger.h (GPL-2.0). See NOTICE.
-
-#include "flanger.h"
+#include "boost.h"
 
 #include <algorithm>
 
 namespace PCore {
-
-    // Room for ~12ms of history, so the 4ms max tap never wraps into itself.
-    static constexpr float kHistorySec = 0.012f;
-
-    Flanger::Flanger(int sampleRate) : sampleRate_(sampleRate) {
+    Boost::Boost(int sampleRate) : sampleRate_(sampleRate) {
         recalculate();
     }
 
-    void Flanger::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
+    void Boost::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
         sampleRate_ = sampleRate;
         channels_.assign(std::max(1, std::max(inChans, outChans)), ChannelState());
-
-        const size_t history = static_cast<size_t>(kHistorySec * sampleRate_) + 4;
-        for (ChannelState& st : channels_) {
-            st.line.resize(history);
-            st.lfo.reset();
-        }
         recalculate();
     }
 
-    void Flanger::recalculate() {
-        delaySamples_ = delayMs_ * 0.001f * static_cast<float>(sampleRate_);
-        for (ChannelState& st : channels_)
-            st.lfo.setFreq(rateHz_, sampleRate_);
+    void Boost::recalculate() {
+        mult_  = dsp::dbToLevel(boostDb_);
+        level_ = std::max(1e-4f, dsp::dbToLevel(levelDb_));
+
+        for (ChannelState& st : channels_) {
+            st.bassCut.c.highpass(dsp::omega(bassCutHz_, sampleRate_), 0.707f);
+            st.highCut.c.lowpass(dsp::omega(highCutHz_, sampleRate_), 0.707f);
+        }
     }
 
-    void Flanger::setParameters(const std::string& param, float value) {
-        if (param == "rate")            rateHz_ = std::clamp(value, 0.0f, 10.0f);
-        else if (param == "delay" || param == "base_delay_ms")
-                                        delayMs_ = std::clamp(value, 0.0f, 4.0f);
-        else if (param == "depth")    { depth_    = std::clamp(value, 0.0f, 1.0f); return; }
-        else if (param == "feedback") { feedback_ = std::clamp(value, 0.0f, 1.0f); return; }
-        else if (param == "mix")      { mix_      = std::clamp(value, 0.0f, 1.0f); return; }
+    void Boost::setParameters(const std::string& param, float value) {
+        if (param == "boost")        boostDb_   = std::clamp(value, 0.0f, 40.0f);
+        else if (param == "level")   levelDb_   = std::clamp(value, -40.0f, 0.0f);
+        else if (param == "basscut") bassCutHz_ = std::clamp(value, 10.0f, 200.0f);
+        else if (param == "highcut") highCutHz_ = std::clamp(value, 1000.0f, 20000.0f);
+        else if (param == "mix")   { mix_ = std::clamp(value, 0.0f, 1.0f); return; }
         else return;
         recalculate();
     }
 
-    void Flanger::process(const float* const* in, float* const* out, unsigned long frames) {
+    void Boost::process(const float* const* in, float* const* out, unsigned long frames) {
         if (!out || !out[0]) return;
 
         const size_t numC = channels_.size();
@@ -82,13 +73,13 @@ namespace PCore {
             for (unsigned long i = 0; i < frames; ++i) {
                 const float x = inp[i];
 
-                const float lfo = st.lfo.step(dsp::LfoShape::Sine);
-                const float d = 1.0f + delaySamples_ * (1.0f + lfo * depth_);
+                float y = x * mult_;
+                y = st.bassCut.step(y);
+                y = st.highCut.step(y);
 
-                const float wet = st.line.read(d);
-                st.line.write(dsp::limit(x + wet * feedback_));
+                y = dsp::foldSym(y, level_);
 
-                outp[i] = dsp::lerp(mix_, x, wet);
+                outp[i] = dsp::lerp(mix_, x, y);
             }
         }
     }

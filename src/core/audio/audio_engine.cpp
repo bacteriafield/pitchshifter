@@ -28,16 +28,7 @@
 #include <memory>
 
 #include "audio_engine.h"
-#include "effects/delay.h"
-#include "effects/chorus.h"
-#include "effects/flanger.h"
-#include "effects/reverb.h"
-#include "effects/pitchshifter.h"
-#include "effects/compressor.h"
-#include "effects/noisegate.h"
-#include "effects/eq.h"
-#include "effects/phaser.h"
-#include "effects/tremolo.h"
+#include "vocal_chain.h"
 
 #define AUDIO_ENGINE_DEBUG 0
 
@@ -48,20 +39,10 @@ namespace PCore {
         inPtrs_.resize(std::max(1, inChans_), nullptr);
         outPtrs_.resize(std::max(1, outChans_), nullptr);
 
-        auto g = std::make_unique<AudioGraph>();
-        // Suggested Order: Dynamics -> EQ -> Pitch -> Mod -> Delay -> Reverb
-        g->addNode(std::make_unique<NoiseGate>(sampleRate_));
-        g->addNode(std::make_unique<Compressor>(sampleRate_));
-        g->addNode(std::make_unique<Eq>(sampleRate_));
-        g->addNode(std::make_unique<PitchShifter>(sampleRate_));
-        g->addNode(std::make_unique<Phaser>(sampleRate_));
-        g->addNode(std::make_unique<Tremolo>(sampleRate_));
-        g->addNode(std::make_unique<Chorus>(sampleRate_));
-        g->addNode(std::make_unique<Flanger>(sampleRate_));
-        g->addNode(std::make_unique<Delay>(sampleRate_));
-        g->addNode(std::make_unique<Reverb>(sampleRate_));
-        g->prepare(sampleRate_, blockSize_, inChans_, outChans_);
-        graph_ = std::move(g);
+        // The Vocal 300 signal path lives in VocalChain; it owns every block
+        // and picks exactly one Effects type, rather than stacking them.
+        chain_ = std::make_unique<VocalChain>(sampleRate_);
+        chain_->prepare(sampleRate_, blockSize_, inChans_, outChans_);
     }
 
     AudioEngine::~AudioEngine() {
@@ -76,14 +57,6 @@ namespace PCore {
     void AudioEngine::stop() {
         if (!running_.exchange(false)) return;
         if (engineThread_.joinable()) engineThread_.join();
-    }
-
-    void AudioEngine::setGraph(std::unique_ptr<AudioGraph> g) {
-        graph_ = std::move(g);
-
-        if (graph_) {
-            graph_->prepare(sampleRate_, blockSize_, inChans_, outChans_);
-        }
     }
 
     // Real-time callback called by the driver
@@ -101,8 +74,8 @@ namespace PCore {
         }
 
         // Process directly via graph (simple model). If you use ring buffers, adapt accordingly.
-        if (self->graph_) {
-            self->graph_->process(in, out, frames);
+        if (self->chain_) {
+            self->chain_->process(in, out, frames);
         } else {
             // passthrough or zero
             if (out && in) {

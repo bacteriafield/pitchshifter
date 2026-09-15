@@ -1,4 +1,4 @@
-/*
+--[[
     MIT License
 
     Copyright (c) 2025 Evandro
@@ -21,11 +21,11 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-*/
+--]]
 
-#include <iostream>
 
-int main() {
-    std::cout << "Hello, World!" << std::endl;
-    return 0;
-}
+local function main()
+    print("hello world")
+end
+
+print(main())

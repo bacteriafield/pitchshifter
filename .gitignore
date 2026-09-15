@@ -51,3 +51,7 @@ build
 #log
 *.log
 pitchshifter.log
+*.txt
+
+# Markdown
+NOTICE

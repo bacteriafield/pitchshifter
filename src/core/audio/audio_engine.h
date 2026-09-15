@@ -35,6 +35,7 @@
 #include "../rt/audio_block.h"
 #include "../io/audio_driver.h"
 #include "audio_graph.h"
+#include "vocal_chain.h"
 
 namespace PCore {
     class AudioEngine {
@@ -46,7 +47,7 @@ namespace PCore {
             std::thread engineThread_;
             SpscRing<AudioBlock> ringIn_;
             SpscRing<std::vector<float>> ringOut_; // contains interleaved or deinterleaved frames ready
-            std::unique_ptr<AudioGraph> graph_;
+            std::unique_ptr<VocalChain> chain_;
 
             // Work buffers (preallocated)
             std::vector<float> engineInBuf_;
@@ -67,8 +68,9 @@ namespace PCore {
             void start();
             void stop();
 
-            // Graph management
-            void setGraph(std::unique_ptr<AudioGraph> g);
+            // The effect chain. Set parameters on it from this thread only --
+            // it queues them across to the audio callback itself.
+            VocalChain& chain() { return *chain_; }
 
             // Diagnostics
             double cpuLoad() const { return cpuLoad_; }

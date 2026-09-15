@@ -23,164 +23,93 @@
 
 */
 
-#include "eq.h"
-#include <cmath>
-#include <algorithm>
+// Ported from torvalds/AudioNoise audio/eq.h (GPL-2.0). See NOTICE.
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include "eq.h"
+
+#include <algorithm>
+#include <cmath>
 
 namespace PCore {
 
-    void Eq::Biquad::processBlock(const float* in, float* out, unsigned long frames) {
-        for (unsigned long i = 0; i < frames; ++i) {
-            float x = in[i];
-            float y = b0 * x + b1 * z1 + b2 * z2 - a1 * z1 - a2 * z2;
-            z2 = z1;
-            z1 = y; // Direct Form I transposed or similar structure? 
-            // Wait, standard DF1: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-            // The code above looks like DF2 or TDF2 if we delay nodes correctly.
-            // Let's stick to standard DF1 implementation for clarity, but memory handling is trickier.
-            // Let's use Transposed Direct Form II for stability with floating point
-            // y[n] = b0*x[n] + z1;
-            // z1 = b1*x[n] - a1*y[n] + z2;
-            // z2 = b2*x[n] - a2*y[n];
-            
-            // Re-implementing TDF2
-            float outSample = b0 * x + z1;
-            z1 = b1 * x - a1 * outSample + z2;
-            z2 = b2 * x - a2 * outSample;
-            
-            // Avoid denormals
-            if (std::fabs(z1) < 1e-20f) z1 = 0.0f;
-            if (std::fabs(z2) < 1e-20f) z2 = 0.0f;
-
-            out[i] = outSample; // Can be in-place
-        }
-    }
+    static constexpr float kBaseFreq = 31.25f;
+    static constexpr float kMaxDb    = 20.0f;
 
     Eq::Eq(int sampleRate) : sampleRate_(sampleRate) {
-        recalculateCoefficients();
+        recalculate();
     }
 
-    void Eq::prepare(int sampleRate, int maxBlock, int inChans, int outChans) {
+    void Eq::prepare(int sampleRate, int /*maxBlock*/, int inChans, int outChans) {
         sampleRate_ = sampleRate;
-        size_t channels = std::max(inChans, outChans);
-        
-        filters_.resize(channels);
-        for (auto& chFilters : filters_) {
-            chFilters.resize(3); // Low, Mid, High
-            for (auto& b : chFilters) b.reset();
-        }
-        recalculateCoefficients();
+        channels_.assign(std::max(1, std::max(inChans, outChans)), ChannelState());
+        recalculate();
     }
 
-    void Eq::calculateLowShelf(Biquad& f, float freq, float gainDB) {
-        float A = std::pow(10.0f, gainDB / 40.0f);
-        float w0 = 2.0f * M_PI * freq / sampleRate_;
-        float alpha = std::sin(w0) / 2.0f * std::sqrt((A + 1.0f/A)*(1.0f/0.707f - 1.0f) + 2.0f);
-        float cw0 = std::cos(w0);
-
-        float b0 =    A*( (A+1.0f) - (A-1.0f)*cw0 + 2.0f*std::sqrt(A)*alpha );
-        float b1 = 2.0f*A*( (A-1.0f) - (A+1.0f)*cw0                   );
-        float b2 =    A*( (A+1.0f) - (A-1.0f)*cw0 - 2.0f*std::sqrt(A)*alpha );
-        float a0 =        (A+1.0f) + (A-1.0f)*cw0 + 2.0f*std::sqrt(A)*alpha;
-        float a1 = -2.0f*( (A-1.0f) + (A+1.0f)*cw0                   );
-        float a2 =        (A+1.0f) + (A-1.0f)*cw0 - 2.0f*std::sqrt(A)*alpha;
-
-        f.b0 = b0 / a0;
-        f.b1 = b1 / a0;
-        f.b2 = b2 / a0;
-        f.a1 = a1 / a0;
-        f.a2 = a2 / a0;
+    float Eq::bandFrequency(int band) const {
+        return kBaseFreq * std::exp2(static_cast<float>(std::clamp(band, 0, NUM_BANDS - 1)));
     }
 
-    void Eq::calculatePeaking(Biquad& f, float freq, float Q, float gainDB) {
-        float A = std::pow(10.0f, gainDB / 40.0f);
-        float w0 = 2.0f * M_PI * freq / sampleRate_;
-        float alpha = std::sin(w0) / (2.0f * Q);
-        float cw0 = std::cos(w0);
-
-        float b0 =   1.0f + alpha * A;
-        float b1 =  -2.0f * cw0;
-        float b2 =   1.0f - alpha * A;
-        float a0 =   1.0f + alpha / A;
-        float a1 =  -2.0f * cw0;
-        float a2 =   1.0f - alpha / A;
-
-        f.b0 = b0 / a0;
-        f.b1 = b1 / a0;
-        f.b2 = b2 / a0;
-        f.a1 = a1 / a0;
-        f.a2 = a2 / a0;
-    }
-
-    void Eq::calculateHighShelf(Biquad& f, float freq, float gainDB) {
-        float A = std::pow(10.0f, gainDB / 40.0f);
-        float w0 = 2.0f * M_PI * freq / sampleRate_;
-        float alpha = std::sin(w0) / 2.0f * std::sqrt((A + 1.0f/A)*(1.0f/0.707f - 1.0f) + 2.0f);
-        float cw0 = std::cos(w0);
-
-        float b0 =    A*( (A+1.0f) + (A-1.0f)*cw0 + 2.0f*std::sqrt(A)*alpha );
-        float b1 = -2.0f*A*( (A-1.0f) + (A+1.0f)*cw0                   );
-        float b2 =    A*( (A+1.0f) + (A-1.0f)*cw0 - 2.0f*std::sqrt(A)*alpha );
-        float a0 =        (A+1.0f) - (A-1.0f)*cw0 + 2.0f*std::sqrt(A)*alpha;
-        float a1 =  2.0f*( (A-1.0f) - (A+1.0f)*cw0                   );
-        float a2 =        (A+1.0f) - (A-1.0f)*cw0 - 2.0f*std::sqrt(A)*alpha;
-
-        f.b0 = b0 / a0;
-        f.b1 = b1 / a0;
-        f.b2 = b2 / a0;
-        f.a1 = a1 / a0;
-        f.a2 = a2 / a0;
-    }
-
-    void Eq::recalculateCoefficients() {
-        if (sampleRate_ <= 0) return;
-
-        for (auto& chFilters : filters_) {
-            if (chFilters.size() >= 3) {
-                calculateLowShelf(chFilters[0], lowFreq_, lowGain_);
-                calculatePeaking(chFilters[1], midFreq_, midQ_, midGain_);
-                calculateHighShelf(chFilters[2], highFreq_, highGain_);
-            }
-        }
+    void Eq::setBandGain(int band, float db) {
+        if (band < 0 || band >= NUM_BANDS) return;
+        gainsDb_[band] = std::clamp(db, -kMaxDb, kMaxDb);
+        recalculate();
     }
 
     void Eq::setParameters(const std::string& param, float value) {
-        bool recalc = true;
-        if (param == "low_gain") lowGain_ = value;
-        else if (param == "mid_gain") midGain_ = value;
-        else if (param == "high_gain") highGain_ = value;
-        else if (param == "low_freq") lowFreq_ = value; // Check range?
-        else if (param == "mid_freq") midFreq_ = value;
-        else if (param == "high_freq") highFreq_ = value;
-        else if (param == "mid_q") midQ_ = std::max(0.1f, value);
-        else recalc = false;
+        if (param.size() == 5 && param.compare(0, 4, "band") == 0 &&
+            param[4] >= '0' && param[4] <= '9') {
+            setBandGain(param[4] - '0', value);
+        }
+        else if (param == "low")  setBandGain(0, value);
+        else if (param == "mid")  setBandGain(5, value);   // 1kHz
+        else if (param == "high") setBandGain(9, value);
+    }
 
-        if (recalc) recalculateCoefficients();
+    void Eq::recalculate() {
+        // A band that disagrees with its neighbours gets a tighter Q. The
+        // original works in pot units (-100..100 == -20..+20dB), hence /60.
+        auto bandQ = [&](int b) {
+            const float prev = gainsDb_[b > 0 ? b - 1 : b];
+            const float next = gainsDb_[b < NUM_BANDS - 1 ? b + 1 : b];
+            const float here = gainsDb_[b];
+            return 0.707f + (std::fabs(prev - here) + std::fabs(next - here)) / 60.0f;
+        };
+
+        const float nyquist = 0.45f * static_cast<float>(sampleRate_);
+
+        for (int b = 0; b < NUM_BANDS; ++b) {
+            const float freq = std::min(bandFrequency(b), nyquist);
+            const dsp::SinCos w = dsp::omega(freq, sampleRate_);
+            const float gain = dsp::dbToLevel(gainsDb_[b]);
+            const float Q = bandQ(b);
+
+            if (b == 0)                   coeff_[b].lowShelf(w, Q, gain);
+            else if (b == NUM_BANDS - 1)  coeff_[b].highShelf(w, Q, gain);
+            else                          coeff_[b].peaking(w, Q, gain);
+        }
+
+        for (ChannelState& st : channels_)
+            for (int b = 0; b < NUM_BANDS; ++b)
+                st.bands[b].c = coeff_[b];
     }
 
     void Eq::process(const float* const* in, float* const* out, unsigned long frames) {
         if (!out || !out[0]) return;
-        if (!in || !in[0]) {
-            std::fill_n(out[0], frames, 0.0f);
-            return;
-        }
 
-        size_t numChannels = filters_.size();
+        const size_t numC = channels_.size();
+        for (size_t c = 0; c < numC; ++c) {
+            float* outp = out[c];
+            if (!outp) break;
 
-        for (size_t c = 0; c < numChannels; ++c) {
-            if (!in[c] || !out[c]) break;
-            
-            // We can process in-place effectively if Eq is cascaded
-            // Or we copy input to output and then process in-place on output
-            std::copy_n(in[c], frames, out[c]);
-            
-            // Cascade filter sections
-            for (auto& filter : filters_[c]) {
-                filter.processBlock(out[c], out[c], frames);
+            const float* inp = (in && in[c]) ? in[c] : nullptr;
+            if (!inp) { std::fill_n(outp, frames, 0.0f); continue; }
+
+            ChannelState& st = channels_[c];
+            for (unsigned long i = 0; i < frames; ++i) {
+                float y = inp[i];
+                for (int b = 0; b < NUM_BANDS; ++b)
+                    y = st.bands[b].step(y);
+                outp[i] = y;
             }
         }
     }

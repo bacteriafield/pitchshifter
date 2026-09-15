@@ -134,3 +134,12 @@ install(DIRECTORY ${SRC_DIR}/core/audio/
 install(FILES ${CORE_DIR}/config.h
     DESTINATION include/pitchshifter
 )
+#############################################################################
+## Effect self-checks: cmake -DBUILD_TESTS=ON .. && cmake --build . --target effects_check
+option(BUILD_TESTS "Build the effect self-checks" OFF)
+if(BUILD_TESTS)
+    file(GLOB EFFECT_SOURCES ${CORE_DIR}/audio/effects/*.cpp)
+    add_executable(effects_check ${CMAKE_SOURCE_DIR}/tests/effects_check.cpp ${EFFECT_SOURCES}
+        ${CORE_DIR}/audio/vocal_chain.cpp ${CORE_DIR}/audio/preset.cpp)
+    target_include_directories(effects_check PRIVATE ${SRC_DIR} ${CORE_DIR})
+endif()

@@ -26,6 +26,11 @@
 #include "port_audio_driver.h"
 #include "audio_driver.h"
 #include <cstring>
+
+#if defined(__linux__)
+#include <pa_linux_alsa.h>
+#include <sys/resource.h>
+#endif
 //#include <portaudio.h>
 
 namespace IO {
@@ -136,6 +141,35 @@ namespace IO {
             if (err) *err = Pa_GetErrorText(e);
             return false;
         }
+
+#if defined(__linux__)
+        //
+        // WSL2, containers and ordinary desktop logins usually have
+        // RLIMIT_RTPRIO == 0, so PortAudio's ALSA backend cannot put its
+        // callback thread on SCHED_FIFO. Its 1 second startup handshake then
+        // trips and Pa_StartStream fails with paTimedOut ("Wait timed out").
+        // Ask for normal scheduling rather than failing to start at all.
+        //
+        {
+            const PaDeviceIndex probeDev = cfg_.outputChannels ? out.device : in.device;
+            const PaDeviceInfo*  pdi = Pa_GetDeviceInfo(probeDev);
+            const PaHostApiInfo* pha = pdi ? Pa_GetHostApiInfo(pdi->hostApi) : nullptr;
+
+            // PaAlsa_EnableRealtimeScheduling blind-casts the stream, so it is
+            // only safe on a stream that really is on the ALSA host API.
+            if (pha && pha->type == paALSA) {
+                struct rlimit rl {};
+                if (getrlimit(RLIMIT_RTPRIO, &rl) == 0 && rl.rlim_cur == 0)
+                    PaAlsa_EnableRealtimeScheduling(stream_, 0);
+            }
+        }
+#endif
+
+        if (const PaStreamInfo* si = Pa_GetStreamInfo(stream_)) {
+            inLatency_  = si->inputLatency;
+            outLatency_ = si->outputLatency;
+        }
+
         initialized_ = true;
         return true;
     }

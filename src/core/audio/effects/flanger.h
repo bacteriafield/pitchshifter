@@ -23,42 +23,51 @@
 
 */
 
+// Ported from torvalds/AudioNoise audio/flanger.h (GPL-2.0), which in turn
+// credits the MIT-licensed DaisySP by Electrosmith / Soundpipe. See NOTICE.
+
 #ifndef FLANGER_H
 #define FLANGER_H
 
-#include <vector>
-#include <cmath>
-#include <algorithm>
-#include <string>
-
 #include "../audio_node.h"
+#include "dsp.h"
 
-namespace PCore { 
+#include <string>
+#include <vector>
+
+namespace PCore {
+    //
+    // Short modulated delay with feedback. A sine LFO sweeps the tap between
+    // 1 sample and `delay` milliseconds.
+    //
     class Flanger : public AudioNode {
-        private:
-            int   sampleRate_ = 44100;
-            float lfoPhase_   = 0.0f;    // [rad]
-            float lfoRate_    = 0.25f;   // Hz (rate)
-            float depthSec_   = 0.0025f; // depth in secons (depth) ~2.5ms
-            float feedback_   = 0.25f;   // 0..0.95
-            float mix_        = 0.35f;   // 0..1
-            float baseDelaySec_ = 0.001f; // delay base ~1 ms
+    public:
+        explicit Flanger(int sampleRate);
+        virtual ~Flanger() = default;
 
-            // Estado
-            std::vector<float> dBuffer_; // buffer
-            size_t writePos_ = 0;
+        void prepare(int sampleRate, int maxBlock, int inChans, int outChans) override;
+        void process(const float* const* in, float* const* out, unsigned long frames) override;
 
-            // Helper
-            inline size_t secToSamples(float sec) const {
-                return static_cast<size_t>(std::max(1, (int)std::lround(sec * sampleRate_)));
-            }
+        void setParameters(const std::string& param, float value);
 
-        public:
-            explicit Flanger(int sampleRate);
-            void prepare(int sr, int block, int inCh, int outCh) override;
-            void process(const float* const* in, float* const* out, unsigned long frames) override;
-            void setParameters(const std::string &param, float value);
+    private:
+        int sampleRate_;
 
+        float rateHz_   = 0.5f;  // 0 .. 10 Hz
+        float delayMs_  = 2.0f;  // 0 .. 4 ms
+        float depth_    = 0.7f;  // 0 .. 1
+        float feedback_ = 0.5f;  // 0 .. 1
+        float mix_      = 0.5f;  // 0.5 is the original's fixed (in+out)/2
+
+        float delaySamples_ = 0.0f;
+
+        struct ChannelState {
+            dsp::Lfo lfo;
+            dsp::DelayLine line;
+        };
+        std::vector<ChannelState> channels_;
+
+        void recalculate();
     };
 }
 
