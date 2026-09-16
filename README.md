@@ -6,9 +6,9 @@
 
 <div align="center">
 
-[![License: MIT](https://img.shields.io/github/license/elaurentium/pitchshifter?color=yellow)](https://github.com/elaurentium/pitchshifter/blob/main/LICENSE)
-[![Version](https://img.shields.io/github/v/release/elaurentium/pitchshifter?color=blue)](https://github.com/elaurentium/pitchshifter/releases)
-[![Platform](https://img.shields.io/badge/platforms-%20Linux%20|%20Windows%20|%20macOS-green.svg?color=lightgrey)](https://github.com/elaurentium/pitchshifter/releases)
+[![License: MIT](https://img.shields.io/github/license/bacteriafield/pitchshifter?color=yellow)](https://github.com/bacteriafield/pitchshifter/blob/main/LICENSE)
+[![Version](https://img.shields.io/github/v/release/bacteriafield/pitchshifter?color=blue)](https://github.com/bacteriafield/pitchshifter/releases)
+[![Platform](https://img.shields.io/badge/platforms-%20Linux%20|%20Windows%20|%20macOS-green.svg?color=lightgrey)](https://github.com/bacteriafield/pitchshifter/releases)
 
 </div>
 
