@@ -23,7 +23,7 @@ The installers download the latest [release](https://github.com/bacteriafield/pi
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.sh | bash
 # options: PREFIX (default /usr/local) and VERSION (default latest)
-curl -fsSL https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.sh | PREFIX=$HOME/.local VERSION=v0.0.1 bash
+## curl -fsSL https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.sh | PREFIX=$HOME/.local VERSION=v0.0.1 bash
 ```
 
 **Windows** (PowerShell, installs to `%LOCALAPPDATA%\PitchShifter`)
@@ -34,17 +34,39 @@ irm https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.ps
 
 **Package managers**
 
+### macOS (Apple Silicon)
 ```bash
-brew install bacteriafield/tap/pitchshifter                  # macOS (Apple Silicon)
-yay -S pitchshifter-bin                                      # Arch (AUR)
+brew install bacteriafield/tap/pitchshifter    
+```
+
+### AUR
+```bash
+yay -S pitchshifter-bin
+```
+
+### Dnf
+```bash
 sudo dnf install https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.rpm
+```
+
+### Debian/Ubuntu
+```bash
 curl -LO https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.deb \
   && sudo apt install ./pitchshifter-linux-x86_64.deb        # Debian / Ubuntu
 ```
 
+### Winget
 ```powershell
 winget install Bacteriafield.PitchShifter
+```
+
+### Chocolatey
+```powershell
 choco install pitchshifter
+```
+
+### Scoop
+```powershell
 scoop bucket add bacteriafield https://github.com/bacteriafield/scoop-bucket; scoop install pitchshifter
 ```
 
