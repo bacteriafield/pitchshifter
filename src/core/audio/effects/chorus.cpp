@@ -25,6 +25,7 @@
 
 
 #include "chorus.h"
+#include "dsp.h"
 
 namespace PCore {
 
@@ -58,7 +59,7 @@ namespace PCore {
         const size_t N = dBuffer_.size();
         if (N == 0) { std::copy(x, x + frames, y); return; }
 
-        const float twoPi = 2.0f * M_PI;
+        const float twoPi = dsp::kTwoPi;
         const float phaseInc = twoPi * (lfoRate_ / static_cast<float>(sampleRate_));
 
         const float baseSmpF  = static_cast<float>(msToSamples(static_cast<float>(baseDelayMs_)));

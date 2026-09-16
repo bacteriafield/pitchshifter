@@ -129,3 +129,21 @@ install(DIRECTORY ${SRC_DIR}/core/audio/
 install(FILES ${CORE_DIR}/config.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pitchshifter
 )
+
+#############################################################################
+## Packages: cpack -G "DEB;RPM" (the release workflow runs it)
+
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/pitchshifter)
+
+set(CPACK_PACKAGE_NAME pitchshifter)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Virtual vocal effects pedal inspired by the DigiTech Vocal 300")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/bacteriafield/pitchshifter")
+set(CPACK_PACKAGE_CONTACT "bacteriafield <bacteriafield@users.noreply.github.com>")
+set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+set(CPACK_DEBIAN_PACKAGE_SECTION sound)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS lua5.4)
+set(CPACK_RPM_PACKAGE_LICENSE MIT)
+set(CPACK_RPM_PACKAGE_GROUP Applications/Multimedia)
+set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
+include(CPack)

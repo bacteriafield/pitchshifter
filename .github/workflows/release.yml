@@ -1,0 +1,221 @@
+# Builds PitchShifter for Linux, macOS and Windows, publishes a GitHub release
+# and updates the package managers.
+#
+#   1. bump project(VERSION) in CMakeLists.txt
+#   2. git tag v0.0.1 && git push origin v0.0.1
+#
+# The installers (install.sh / install.ps1) download these archives by name.
+# Each package manager needs a one-time setup (packaging/README.md); without its secret it is skipped.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:   # builds only; releasing needs a tag
+
+permissions:
+  contents: write
+
+jobs:
+  unix:
+    strategy:
+      matrix:
+        include:
+          # 22.04: oldest supported glibc, so the binary runs on current distros too
+          - { os: ubuntu-22.04, target: linux-x86_64 }
+          - { os: macos-15,     target: macos-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y portaudio19-dev lua5.4 liblua5.4-dev rpm
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install portaudio lua@5.4
+          # lua@5.4 is keg-only; Homebrew's plain "lua" is 5.5
+          echo "$(brew --prefix lua@5.4)/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix lua@5.4)" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=OFF -DBUILD_TESTS=OFF
+          cmake --build build --parallel
+          test -x build/bin/pitchshifter-gui   # the GUI must be in the archive
+          dir=pitchshifter-${{ matrix.target }}
+          cmake --install build --prefix "$dir"
+          tar -czf "$dir.tar.gz" "$dir"
+
+      - name: .deb and .rpm
+        if: runner.os == 'Linux'
+        run: cpack --config build/CPackConfig.cmake -G "DEB;RPM" -B "$PWD" -D CPACK_PACKAGE_FILE_NAME=pitchshifter-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: pitchshifter-${{ matrix.target }}.*
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: zip
+          pacboy: gcc:p cmake:p ninja:p pkgconf:p portaudio:p
+
+      # The Lua/IUP front panel is not built on Windows
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=OFF -DBUILD_TESTS=OFF -DBUILD_GUI=OFF
+          cmake --build build
+          dir=pitchshifter-windows-x86_64
+          cmake --install build --prefix "$dir"
+          # PitchShifter.exe needs the MinGW runtime and PortAudio DLLs next to it
+          ldd "$dir/bin/PitchShifter.exe" | awk '/\/ucrt64\// {print $3}' | xargs -r cp -t "$dir/bin"
+          zip -r "$dir.zip" "$dir"
+
+      # Outside MSYS2, so only the bundled DLLs are there. No audio device on CI: it exits right away.
+      - name: Check the bundled DLLs
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot\system32"
+          New-Item empty.txt | Out-Null
+          $p = Start-Process pitchshifter-windows-x86_64\bin\PitchShifter.exe -Wait -PassThru -NoNewWindow -RedirectStandardInput empty.txt
+          if ($p.ExitCode -eq -1073741515) { throw 'PitchShifter.exe cannot find a DLL (0xC0000135)' }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-x86_64
+          path: pitchshifter-windows-x86_64.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unix, windows]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Check version
+        id: version
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          if ! grep -q "project(PitchShifter VERSION $version " CMakeLists.txt; then
+            echo "::error::$GITHUB_REF_NAME does not match project(VERSION) in CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          (cd dist && sha256sum pitchshifter-* > SHA256SUMS)
+          packaging/render.sh "$VERSION" dist/SHA256SUMS rendered
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packaging
+          path: rendered
+
+  # brew install bacteriafield/tap/pitchshifter, scoop install bacteriafield/pitchshifter
+  homebrew-scoop:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packaging
+          path: packaging
+
+      - name: Push manifests
+        if: env.TOKEN != ''
+        run: |
+          push() {  # <repo> <file in packaging/> <dir in repo>
+            git clone --depth 1 "https://x-access-token:$TOKEN@github.com/bacteriafield/$1" "$1"
+            mkdir -p "$1/$3"
+            cp "packaging/$2" "$1/$3/"
+            git -C "$1" add -A
+            git -C "$1" -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "pitchshifter $VERSION"
+            git -C "$1" push
+          }
+          push homebrew-tap homebrew/pitchshifter.rb Formula
+          push scoop-bucket scoop/pitchshifter.json bucket
+
+  # yay -S pitchshifter-bin
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packaging
+          path: packaging
+
+      - if: env.AUR_KEY != ''
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: pitchshifter-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          commit_username: bacteriafield
+          commit_email: bacteriafield@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: pitchshifter ${{ needs.release.outputs.version }}
+
+  # choco install pitchshifter (each version goes through Chocolatey's moderation)
+  chocolatey:
+    needs: release
+    runs-on: windows-latest
+    env:
+      CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packaging
+          path: packaging
+
+      - if: env.CHOCO_API_KEY != ''
+        run: |
+          choco pack packaging/chocolatey/pitchshifter.nuspec --outputdirectory .
+          choco push "pitchshifter.$env:VERSION.nupkg" --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+
+  # winget install Bacteriafield.PitchShifter (the first version is submitted by hand)
+  winget:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - if: env.GITHUB_TOKEN != ''
+        run: |
+          curl -fsSL https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz komac
+          ./komac update Bacteriafield.PitchShifter --version "$VERSION" --submit \
+            --urls "https://github.com/bacteriafield/pitchshifter/releases/download/v$VERSION/pitchshifter-windows-x86_64.zip"

@@ -1,0 +1,22 @@
+{
+    "version": "@VERSION@",
+    "description": "Virtual vocal effects pedal inspired by the DigiTech Vocal 300",
+    "homepage": "https://github.com/bacteriafield/pitchshifter",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/bacteriafield/pitchshifter/releases/download/v@VERSION@/pitchshifter-windows-x86_64.zip",
+            "hash": "@SHA256_WINDOWS@"
+        }
+    },
+    "extract_dir": "pitchshifter-windows-x86_64",
+    "bin": "bin\\PitchShifter.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/bacteriafield/pitchshifter/releases/download/v$version/pitchshifter-windows-x86_64.zip"
+            }
+        }
+    }
+}

@@ -16,9 +16,47 @@
 
 ## Installation
 
+The installers download the latest [release](https://github.com/bacteriafield/pitchshifter/releases) build and its runtime dependencies (PortAudio, Lua 5.4).
+
+**Linux (x86_64) / macOS (Apple Silicon)** — apt, dnf, pacman, zypper or Homebrew
+
 ```bash
-# NOT IMPLEMENTED YET
+curl -fsSL https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.sh | bash
+# options: PREFIX (default /usr/local) and VERSION (default latest)
+curl -fsSL https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.sh | PREFIX=$HOME/.local VERSION=v0.0.1 bash
 ```
+
+**Windows** (PowerShell, installs to `%LOCALAPPDATA%\PitchShifter`)
+
+```powershell
+irm https://raw.githubusercontent.com/bacteriafield/pitchshifter/main/install.ps1 | iex
+```
+
+**Package managers**
+
+```bash
+brew install bacteriafield/tap/pitchshifter                  # macOS (Apple Silicon)
+yay -S pitchshifter-bin                                      # Arch (AUR)
+sudo dnf install https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.rpm
+curl -LO https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.deb \
+  && sudo apt install ./pitchshifter-linux-x86_64.deb        # Debian / Ubuntu
+```
+
+```powershell
+winget install Bacteriafield.PitchShifter
+choco install pitchshifter
+scoop bucket add bacteriafield https://github.com/bacteriafield/scoop-bucket; scoop install pitchshifter
+```
+
+The front panel (`pitchshifter-gui`, Linux and macOS) also needs [IUP](https://www.tecgraf.puc-rio.br/iup/) for Lua 5.4 (`iuplua`), which isn't in the package managers.
+
+**From source** (C++17 compiler, CMake, pkg-config, PortAudio, Lua 5.4 headers for the GUI)
+
+```bash
+cmake -S . -B build && cmake --build build && sudo cmake --install build
+```
+
+**Releasing:** bump `project(VERSION)` in `CMakeLists.txt`, push a `v*` tag (`git tag v0.0.1 && git push origin v0.0.1`) and [release.yml](.github/workflows/release.yml) builds everything, publishes the release and updates the package managers ([one-time setup](packaging/README.md)).
 
 ## How to contributing
 Pull request are ever welcome. For major changes, please open an issue to discuss your proposal and what you'd like to change.

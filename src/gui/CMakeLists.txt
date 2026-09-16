@@ -70,15 +70,20 @@ if(LUA_EXECUTABLE)
     # Build tree: the script straight from the sources, the module from build/lib
     set(PCORE_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
     set(GUI_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)
+    set(LUA_CANDIDATES "\"${LUA_EXECUTABLE}\"")
     configure_file(pitchshifter-gui.in ${CMAKE_CURRENT_BINARY_DIR}/build-tree/pitchshifter-gui @ONLY)
     file(COPY ${CMAKE_CURRENT_BINARY_DIR}/build-tree/pitchshifter-gui
         DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
         FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     )
 
-    # Installed: both under CMAKE_INSTALL_PREFIX (set it when configuring; DESTDIR is fine)
-    set(PCORE_DIR ${CMAKE_INSTALL_FULL_LIBDIR}/pitchshifter)
-    set(GUI_SCRIPT ${CMAKE_INSTALL_FULL_DATADIR}/pitchshifter/main.lua)
+    # Installed: relative to the launcher ($here), so the release archives unpack anywhere
+    file(RELATIVE_PATH PCORE_DIR ${CMAKE_INSTALL_FULL_BINDIR} ${CMAKE_INSTALL_FULL_LIBDIR}/pitchshifter)
+    file(RELATIVE_PATH GUI_SCRIPT ${CMAKE_INSTALL_FULL_BINDIR} ${CMAKE_INSTALL_FULL_DATADIR}/pitchshifter/main.lua)
+    set(PCORE_DIR "$here/${PCORE_DIR}")
+    set(GUI_SCRIPT "$here/${GUI_SCRIPT}")
+    # Release archives run on other systems, where a plain "lua" may not be 5.4
+    set(LUA_CANDIDATES "lua5.4 \"${LUA_EXECUTABLE}\" /opt/homebrew/opt/lua@5.4/bin/lua lua")
     configure_file(pitchshifter-gui.in ${CMAKE_CURRENT_BINARY_DIR}/install-tree/pitchshifter-gui @ONLY)
     install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/install-tree/pitchshifter-gui DESTINATION ${CMAKE_INSTALL_BINDIR})
 

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>pitchshifter</id>
+    <version>@VERSION@</version>
+    <packageSourceUrl>https://github.com/bacteriafield/pitchshifter/tree/main/packaging/chocolatey</packageSourceUrl>
+    <owners>bacteriafield</owners>
+    <title>PitchShifter</title>
+    <authors>Evandro L. Limeira</authors>
+    <projectUrl>https://github.com/bacteriafield/pitchshifter</projectUrl>
+    <licenseUrl>https://github.com/bacteriafield/pitchshifter/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/bacteriafield/pitchshifter</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/bacteriafield/pitchshifter/issues</bugTrackerUrl>
+    <releaseNotes>https://github.com/bacteriafield/pitchshifter/releases/tag/v@VERSION@</releaseNotes>
+    <tags>pitchshifter audio vocal effects pedal portaudio foss cli</tags>
+    <summary>Virtual vocal effects pedal inspired by the DigiTech Vocal 300</summary>
+    <description>PitchShifter is a virtual vocal multi-effects pedal: noise gate, compressor, EQ, pitch shift, voices, modulation, delay and reverb, with presets. This package installs the PitchShifter command-line program.</description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
