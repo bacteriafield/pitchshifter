@@ -82,9 +82,10 @@ jobs:
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          install: zip unzip
-          # lua54, not lua: MSYS2's plain lua is 5.5 and IUP's DLLs need lua54.dll
-          pacboy: gcc:p cmake:p ninja:p pkgconf:p portaudio:p lua54:p
+
+      # lua54, not lua: MSYS2's plain lua is 5.5 and IUP's DLLs need lua54.dll
+      - name: Dependencies
+        run: pkg/retry.sh pacman --noconfirm -S --needed zip unzip mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,portaudio,lua54}
 
       - name: Build
         run: |
