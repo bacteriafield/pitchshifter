@@ -112,6 +112,12 @@ endif()
 
 add_subdirectory(src/core)
 
+if(BUILD_TESTS)
+    add_executable(mix_check tests/mix_check.cpp)
+    target_link_libraries(mix_check PRIVATE PitchShifter::Core)
+    add_test(NAME mix_check COMMAND mix_check)
+endif()
+
 if(BUILD_CLI)
     add_subdirectory(src/cli)
 endif()

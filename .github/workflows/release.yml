@@ -1,11 +1,11 @@
-# Builds PitchShifter for Linux, macOS and Windows, publishes a GitHub release
-# and updates the package managers.
+# Builds PitchShifter for Linux, macOS and Windows (build.yml), publishes a
+# GitHub release and updates the package managers.
 #
 #   1. bump project(VERSION) in CMakeLists.txt
 #   2. git tag v0.0.1 && git push origin v0.0.1
 #
 # The installers (install.sh / install.ps1) download these archives by name.
-# Each package manager needs a one-time setup (packaging/README.md); without its secret it is skipped.
+# Each package manager needs a one-time setup (pkg/README.md); without its secret it is skipped.
 name: Release
 
 on:
@@ -17,113 +17,12 @@ permissions:
   contents: write
 
 jobs:
-  unix:
-    strategy:
-      matrix:
-        include:
-          # 22.04: oldest supported glibc, so the binary runs on current distros too
-          - { os: ubuntu-22.04, target: linux-x86_64 }
-          - { os: macos-15,     target: macos-arm64 }
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y portaudio19-dev lua5.4 liblua5.4-dev rpm patchelf libgtk-3-0 xvfb
-
-      - name: Dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install portaudio lua@5.4 gtk+3 pkgconf
-          # lua@5.4 is keg-only; Homebrew's plain "lua" is 5.5
-          echo "$(brew --prefix lua@5.4)/bin" >> "$GITHUB_PATH"
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix lua@5.4)" >> "$GITHUB_ENV"
-
-      - name: Build
-        run: |
-          pkg/fetch-iup.sh ${{ matrix.target }} iup-bundle
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=OFF -DBUILD_TESTS=OFF -DIUP_BUNDLE_DIR=$PWD/iup-bundle
-          cmake --build build --parallel
-          test -x build/bin/pitchshifter-gui   # the GUI must be in the archive
-          dir=pitchshifter-${{ matrix.target }}
-          cmake --install build --prefix "$dir"
-          tar -czf "$dir.tar.gz" "$dir"
-
-      # A panel that can't start falls back to the prompt, which exits on empty
-      # stdin, so "still running" means the window really opened.
-      - name: Check the panel opens from the archive
-        run: |
-          run=""
-          if [ "$RUNNER_OS" = Linux ]; then run="xvfb-run -a"; fi
-          $run pitchshifter-${{ matrix.target }}/bin/PitchShifter </dev/null &
-          pid=$!
-          sleep 10
-          kill -0 "$pid"
-          kill "$pid"
-
-      - name: .deb and .rpm
-        if: runner.os == 'Linux'
-        run: cpack --config build/CPackConfig.cmake -G "DEB;RPM" -B "$PWD" -D CPACK_PACKAGE_FILE_NAME=pitchshifter-${{ matrix.target }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.target }}
-          path: pitchshifter-${{ matrix.target }}.*
-
-  windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          install: zip unzip
-          # lua54, not lua: MSYS2's plain lua is 5.5 and IUP's DLLs need lua54.dll
-          pacboy: gcc:p cmake:p ninja:p pkgconf:p portaudio:p lua54:p
-
-      - name: Build
-        run: |
-          pkg/fetch-iup.sh windows-x86_64 iup-bundle
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=OFF -DBUILD_TESTS=OFF "-DIUP_BUNDLE_DIR=$(cygpath -m "$PWD/iup-bundle")"
-          cmake --build build
-          dir=pitchshifter-windows-x86_64
-          cmake --install build --prefix "$dir"
-          # Windows has no Lua. A private name, so installers that put every .exe on PATH don't shadow one.
-          cp "$(command -v lua5.4)" "$dir/bin/pitchshifter-lua.exe"
-          # Everything needs the MinGW runtime, PortAudio and Lua DLLs next to it
-          ldd "$dir/bin/PitchShifter.exe" "$dir/bin/pcore.dll" "$dir/bin/pitchshifter-lua.exe" | awk '/\/ucrt64\// {print $3}' | sort -u | xargs -r cp -t "$dir/bin"
-          zip -r "$dir.zip" "$dir"
-
-      # Outside MSYS2, so only the bundled DLLs are there. No audio device on CI: the prompt exits right away.
-      # A panel that can't start falls back to that prompt, so "still running" means the window really opened.
-      - name: Check the bundle
-        shell: pwsh
-        run: |
-          $env:PATH = "$env:SystemRoot\system32"
-          $exe = 'pitchshifter-windows-x86_64\bin\PitchShifter.exe'
-          New-Item empty.txt | Out-Null
-          $p = Start-Process $exe -ArgumentList '--cli' -Wait -PassThru -NoNewWindow -RedirectStandardInput empty.txt
-          if ($p.ExitCode -eq -1073741515) { throw 'PitchShifter.exe cannot find a DLL (0xC0000135)' }
-          $p = Start-Process $exe -PassThru -NoNewWindow -RedirectStandardInput empty.txt
-          Start-Sleep 10
-          if ($p.HasExited) { throw 'the front panel did not open' }
-          Stop-Process -Name pitchshifter-lua, PitchShifter -Force
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: windows-x86_64
-          path: pitchshifter-windows-x86_64.zip
+  build:
+    uses: ./.github/workflows/build.yml
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unix, windows]
+    needs: build
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

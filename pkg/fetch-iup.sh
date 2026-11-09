@@ -19,7 +19,8 @@ sha=$(command -v sha256sum || echo "shasum -a 256")
 # Checksums are pinned because these files end up inside our releases.
 fetch() {  # <path under IUP's 3.32 folder, spaces as %20> <sha256>
     file=$(basename "$1")
-    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 30 -o "$file" \
+    # SourceForge mirrors stall a lot: drop a dead transfer and resume where it stopped
+    curl -fsSL --retry 8 --retry-all-errors --connect-timeout 30 --speed-limit 2048 --speed-time 60 -C - -o "$file" \
         "https://downloads.sourceforge.net/project/iup/3.32/$1"
     echo "$2  $file" | $sha -c -
 }
@@ -65,7 +66,7 @@ macos-arm64)
         src/iup.c src/iup_*.c $gtk src/mot/iupunix_info.c $(pkg-config --libs gtk+-3.0)
 
     cd srclua5
-    mkdir lh
+    mkdir -p lh
     for f in iuplua.lua constants.lua iup_config.lua elem/*.lua; do
         lua bin2c.lua "$f" > "lh/$(basename "${f%.lua}").lh"
     done
