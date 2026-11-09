@@ -4,14 +4,14 @@
 version and checksums and publishes them. Each channel needs a one-time setup; until its
 secret exists (Settings → Secrets and variables → Actions), the workflow skips it.
 
-| Channel | Install | Secret |
-|---|---|---|
-| `.deb` / `.rpm` | `sudo dnf install https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.rpm` | none |
-| Homebrew tap | `brew install bacteriafield/tap/pitchshifter` | `PACKAGES_TOKEN` |
-| Scoop bucket | `scoop bucket add bacteriafield https://github.com/bacteriafield/scoop-bucket` then `scoop install pitchshifter` | `PACKAGES_TOKEN` |
-| AUR | `yay -S pitchshifter-bin` | `AUR_SSH_PRIVATE_KEY` |
-| Chocolatey | `choco install pitchshifter` | `CHOCO_API_KEY` |
-| winget | `winget install Bacteriafield.PitchShifter` | `WINGET_TOKEN` |
+| Channel | Install |
+|---|---|
+| `.deb` / `.rpm` | `sudo dnf install https://github.com/bacteriafield/pitchshifter/releases/latest/download/pitchshifter-linux-x86_64.rpm` |
+| Homebrew tap | `brew install bacteriafield/tap/pitchshifter` |
+| Scoop bucket | `scoop bucket add bacteriafield https://github.com/bacteriafield/scoop-bucket` then `scoop install pitchshifter` |
+| AUR | `yay -S pitchshifter-bin` |
+| Chocolatey | `choco install pitchshifter` |
+| winget | `winget install Bacteriafield.PitchShifter` | 
 
 ## Homebrew and Scoop
 
