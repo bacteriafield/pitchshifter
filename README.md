@@ -16,7 +16,7 @@
 
 ## Installation
 
-The installers download the latest [release](https://github.com/bacteriafield/pitchshifter/releases) build and its runtime dependencies (PortAudio, Lua 5.4, GTK 3).
+The installers download the latest [release](https://github.com/bacteriafield/pitchshifter/releases) build and its runtime dependencies (PortAudio, GTK 3).
 
 **Linux (x86_64) / macOS (Apple Silicon)** — apt, dnf, pacman, zypper or Homebrew
 

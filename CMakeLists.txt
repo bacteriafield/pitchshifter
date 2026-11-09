@@ -150,8 +150,6 @@ set(CPACK_PACKAGE_CONTACT "bacteriafield <bacteriafield@users.noreply.github.com
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
 set(CPACK_DEBIAN_PACKAGE_SECTION sound)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS lua5.4)
-set(CPACK_RPM_PACKAGE_REQUIRES lua)
 set(CPACK_RPM_PACKAGE_LICENSE MIT)
 set(CPACK_RPM_PACKAGE_GROUP Applications/Multimedia)
 set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
