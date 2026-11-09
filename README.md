@@ -78,6 +78,8 @@ The front panel (`pitchshifter-gui`, Linux and macOS) also needs [IUP](https://w
 cmake -S . -B build && cmake --build build && sudo cmake --install build
 ```
 
+A build ends by opening the front panel and returns when you close it (`-DOPEN_GUI_AFTER_BUILD=OFF` to skip). `PitchShifter` opens the panel too; `PitchShifter --cli` gives the text prompt, which is also what you get when the panel can't start.
+
 **Releasing:** bump `project(VERSION)` in `CMakeLists.txt`, push a `v*` tag (`git tag v0.0.1 && git push origin v0.0.1`) and [release.yml](.github/workflows/release.yml) builds everything, publishes the release and updates the package managers ([one-time setup](packaging/README.md)).
 
 ## How to contributing

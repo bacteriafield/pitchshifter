@@ -62,6 +62,7 @@ endif()
 
 install(TARGETS pcore LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/pitchshifter)
 install(FILES main.lua DESTINATION ${CMAKE_INSTALL_DATADIR}/pitchshifter)
+install(DIRECTORY view DESTINATION ${CMAKE_INSTALL_DATADIR}/pitchshifter)
 
 #############################################################################
 ## pitchshifter-gui launcher, run target and smoke test
@@ -87,13 +88,22 @@ if(LUA_EXECUTABLE)
     configure_file(pitchshifter-gui.in ${CMAKE_CURRENT_BINARY_DIR}/install-tree/pitchshifter-gui @ONLY)
     install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/install-tree/pitchshifter-gui DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+    # In ALL, so every build ends with the panel open. Not on CI, which has no
+    # display, and "|| true" because a panel that can't start isn't a failed build.
+    if(OPEN_GUI_AFTER_BUILD AND NOT iuplua_missing AND NOT DEFINED ENV{CI})
+        set(RUN_GUI_IN_ALL ALL)
+    endif()
+
     # Runs from the repository root, where presets.txt lives
-    add_custom_target(run-gui
-        COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/pitchshifter-gui
+    add_custom_target(run-gui ${RUN_GUI_IN_ALL}
+        COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/pitchshifter-gui || true
         DEPENDS pcore
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         USES_TERMINAL
     )
+    if(TARGET PitchShifter)
+        add_dependencies(run-gui PitchShifter)   # a failed compile opens nothing
+    endif()
 
     if(BUILD_TESTS)
         set(SMOKE_DIR ${CMAKE_CURRENT_BINARY_DIR}/pcore_smoke)
