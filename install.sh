@@ -16,27 +16,27 @@ SUDO=""
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-echo "==> Installing dependencies (PortAudio, Lua 5.4)"
+echo "==> Installing dependencies (PortAudio, GTK 3)"
 case "$(uname -s)-$(uname -m)" in
 Linux-x86_64)
     target=linux-x86_64
     if have apt-get; then
         $SUDO apt-get update
-        $SUDO apt-get install -y curl libportaudio2 lua5.4
+        $SUDO apt-get install -y curl libportaudio2 libgtk-3-0
     elif have dnf; then
-        $SUDO dnf install -y curl portaudio lua
+        $SUDO dnf install -y curl portaudio gtk3
     elif have pacman; then
-        $SUDO pacman -Sy --needed --noconfirm curl portaudio lua54
+        $SUDO pacman -Sy --needed --noconfirm curl portaudio gtk3
     elif have zypper; then
-        $SUDO zypper install -y curl libportaudio2 lua54
+        $SUDO zypper install -y curl libportaudio2 libgtk-3-0
     else
-        echo "Unknown package manager: install PortAudio and Lua 5.4 yourself." >&2
+        echo "Unknown package manager: install PortAudio and GTK 3 yourself." >&2
     fi
     ;;
 Darwin-arm64)
     target=macos-arm64
     have brew || { echo "Homebrew is required: https://brew.sh" >&2; exit 1; }
-    brew install portaudio lua@5.4
+    brew install portaudio gtk+3
     ;;
 *)
     echo "No release build for $(uname -s) $(uname -m). Build from source, see the README." >&2
@@ -64,15 +64,4 @@ fi
 
 echo
 echo "Done. Run: PitchShifter"
-# ponytail: IUP isn't in apt/dnf/pacman/brew, so it stays a manual step
-if [ -x "$PREFIX/bin/pitchshifter-gui" ]; then
-    # same lookup as the launcher
-    for lua in lua5.4 /opt/homebrew/opt/lua@5.4/bin/lua lua; do have "$lua" && break; done
-    if "$lua" -e 'os.exit(package.searchpath("iuplua", package.cpath) and 0 or 1)' 2>/dev/null; then
-        echo "     or:  pitchshifter-gui"
-    else
-        echo "The front panel (pitchshifter-gui) also needs IUP for Lua 5.4 (iuplua):"
-        echo "  https://sourceforge.net/projects/iup/files/"
-    fi
-fi
 case ":$PATH:" in *":$PREFIX/bin:"*) ;; *) echo "Add $PREFIX/bin to your PATH." ;; esac

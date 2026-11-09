@@ -6,7 +6,7 @@ class Pitchshifter < Formula
   license "MIT"
 
   depends_on arch: :arm64
-  depends_on "lua@5.4"
+  depends_on "gtk+3"
   depends_on :macos
   depends_on "portaudio"
 
@@ -16,7 +16,7 @@ class Pitchshifter < Formula
 
   test do
     assert_predicate bin/"PitchShifter", :executable?
-    system Formula["lua@5.4"].opt_bin/"lua", "-e",
+    system lib/"pitchshifter/pitchshifter-lua", "-e",
            "package.cpath = '#{lib}/pitchshifter/?.so'; assert(#require('pcore').voices() == 12)"
   end
 end

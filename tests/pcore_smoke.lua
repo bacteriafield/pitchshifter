@@ -10,7 +10,7 @@
 --
 
 local moddir = assert(arg[1], "usage: lua pcore_smoke.lua <directory with pcore.so> [--scratch]")
-package.cpath = moddir .. "/?.so;" .. package.cpath
+package.cpath = moddir .. "/?.so;" .. moddir .. "/?.dll;" .. package.cpath
 
 if arg[2] == "--scratch" then
     os.remove("presets.txt")

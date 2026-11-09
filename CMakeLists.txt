@@ -27,7 +27,7 @@ set(CORE_DIR ${SRC_DIR}/core)
 
 #############################################################################
 ##
-##   cmake -S . -B build && cmake --build build     build everything
+##   cmake -S . -B build && cmake --build build     build everything, then open the front panel
 ##   ctest --test-dir build --output-on-failure     run the checks
 ##   cmake --build build --target run-gui           open the front panel
 ##
@@ -41,6 +41,8 @@ option(ENABLE_QT   "Build the Qt object helpers (src/core/object.cpp)" ON)
 option(BUILD_CLI   "Build the PitchShifter command-line program" ON)
 option(BUILD_GUI   "Build the Lua/IUP front panel (needs Lua 5.4 headers)" ON)
 option(BUILD_TESTS "Register the ctest checks" ON)
+option(OPEN_GUI_AFTER_BUILD "Open the front panel at the end of every build" ON)
+set(IUP_BUNDLE_DIR "" CACHE PATH "IUP runtime to install with the panel (see pkg/fetch-iup.sh)")
 
 set(VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(VERSION_MINOR ${PROJECT_VERSION_MINOR})
@@ -110,6 +112,12 @@ endif()
 
 add_subdirectory(src/core)
 
+if(BUILD_TESTS)
+    add_executable(mix_check tests/mix_check.cpp)
+    target_link_libraries(mix_check PRIVATE PitchShifter::Core)
+    add_test(NAME mix_check COMMAND mix_check)
+endif()
+
 if(BUILD_CLI)
     add_subdirectory(src/cli)
 endif()
@@ -142,7 +150,6 @@ set(CPACK_PACKAGE_CONTACT "bacteriafield <bacteriafield@users.noreply.github.com
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
 set(CPACK_DEBIAN_PACKAGE_SECTION sound)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_SUGGESTS lua5.4)
 set(CPACK_RPM_PACKAGE_LICENSE MIT)
 set(CPACK_RPM_PACKAGE_GROUP Applications/Multimedia)
 set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")

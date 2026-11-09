@@ -37,6 +37,15 @@ extern "C" {
     #include "core/logger.h"
 }
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <process.h>
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 static const char* kUserPresets = "presets.txt";
 
 // Factory presets first, then user presets: the numbering the commands use.
@@ -70,7 +79,46 @@ static void printHelp() {
         "  quit                stop\n\n";
 }
 
-int main() {
+// Runs the front panel until its window closes. False if it couldn't start: no
+// launcher, no iuplua, no display.
+static bool openPanel(char** argv) {
+#ifdef _WIN32
+    (void)argv;
+
+    // No launcher script here: a private Lua and every DLL the panel needs sit beside this exe.
+    char path[MAX_PATH];
+    const DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (n == 0 || n == MAX_PATH) return false;
+    std::string dir(path, n);
+    dir.erase(dir.rfind('\\'));
+
+    _putenv_s("LUA_CPATH", (dir + "\\?.dll").c_str());
+    const std::string lua = dir + "\\pitchshifter-lua.exe";
+    const std::string script = "\"" + dir + "\\..\\share\\pitchshifter\\main.lua\"";
+    return _spawnl(_P_WAIT, lua.c_str(), "pitchshifter-lua", script.c_str(), nullptr) == 0;
+#else
+    // The pitchshifter-gui launcher, beside this binary
+    const std::string self(argv[0]);
+    const size_t slash = self.rfind('/');
+    const std::string launcher = (slash == std::string::npos ? "" : self.substr(0, slash + 1)) + "pitchshifter-gui";
+
+    const pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {
+        execvp(launcher.c_str(), argv);
+        _exit(127);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return !(WIFEXITED(status) && WEXITSTATUS(status) != 0);
+#endif
+}
+
+int main(int argc, char** argv) {
+    // The front panel is the program; --cli, or a panel that can't start, gets the prompt.
+    if (!(argc > 1 && std::string(argv[1]) == "--cli") && openPanel(argv)) return 0;
+
     Logger* logger = logger_create("pitchshifter.log", true, true, true);
     logger_set_bitmask(Error | Warning | Info | Debug);
 

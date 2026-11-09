@@ -1,0 +1,72 @@
+# Every pull request: is everything still working as it should?
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a pull request replaces the run still going for the old one
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Workflows
+        uses: docker://rhysd/actionlint:1.7.7
+
+      - name: Shell scripts
+        run: shellcheck -S error install.sh build.sh pkg/*.sh tests/*.sh
+
+      - name: Lua syntax
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+          find src tests -name '*.lua' -exec luac5.4 -p {} +
+
+      - name: Package manifests render and parse
+        run: |
+          for f in pitchshifter-linux-x86_64.tar.gz pitchshifter-macos-arm64.tar.gz pitchshifter-windows-x86_64.zip; do
+            echo "$(sha256sum /dev/null | cut -d' ' -f1)  $f"
+          done > sums
+          pkg/render.sh 0.0.0 sums rendered
+          python3 -m json.tool rendered/scoop/pitchshifter.json > /dev/null
+          ruby -c rendered/homebrew/pitchshifter.rb
+
+  build:
+    uses: ./.github/workflows/build.yml
+
+  # What someone who just downloaded the package gets, on a machine with nothing else on it
+  clean-install:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:24.04
+            install: apt-get update && apt-get install -y ./pitchshifter-linux-x86_64.deb xvfb xauth
+          - image: fedora:latest
+            install: dnf install -y ./pitchshifter-linux-x86_64.rpm xorg-x11-server-Xvfb xorg-x11-xauth util-linux
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-x86_64
+
+      - name: Install the package
+        run: ${{ matrix.install }}
+
+      - name: The panel opens
+        run: tests/panel_opens.sh xvfb-run -a PitchShifter
