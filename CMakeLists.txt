@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(PitchShifter VERSION 0.0.1 DESCRIPTION "An vocal 300 like" LANGUAGES C CXX)
+project(PitchShifter VERSION 0.0.2 DESCRIPTION "An vocal 300 like" LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
