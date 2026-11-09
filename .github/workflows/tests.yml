@@ -1,0 +1,80 @@
+# Do the tests pass? On every push, on Linux, macOS and Windows.
+# Fast on purpose: no IUP and no packaging, because panel_smoke drives the panel
+# on a fake IUP. ci.yml is the slow one, with the real window and the packages.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    # A push already covers pull requests from this repository; only forks need the other event
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y portaudio19-dev lua5.4 liblua5.4-dev
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install portaudio lua@5.4 pkgconf
+          # lua@5.4 is keg-only; Homebrew's plain "lua" is 5.5
+          echo "$(brew --prefix lua@5.4)/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix lua@5.4)" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_QT=OFF -DBUILD_TESTS=ON
+          cmake --build build --parallel
+
+      # CMake only registers the Lua tests when it finds Lua, and none may be skipped silently
+      - name: Test
+        run: |
+          ctest --test-dir build -N | grep -q panel_smoke
+          ctest --test-dir build --output-on-failure
+
+  windows:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+
+      - name: Dependencies
+        run: pkg/retry.sh pacman --noconfirm -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,portaudio,lua54}
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_QT=OFF -DBUILD_TESTS=ON
+          cmake --build build
+
+      - name: Test
+        run: |
+          ctest --test-dir build -N | grep -q panel_smoke
+          ctest --test-dir build --output-on-failure

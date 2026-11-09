@@ -436,6 +436,15 @@ if presetErr then title = title .. "  [" .. presetErr .. "]" end
 
 local dlg
 
+-- The window and taskbar icon, from pkg/make-icons.sh. The panel works without it.
+local function windowIcon()
+    local f = io.open(here .. "/view/icon.rgba", "rb")
+    if not f then return nil end
+    local rgba = f:read("a")
+    f:close()
+    return iup.imagergba{ width = 64, height = 64, pixels = { rgba:byte(1, -1) } }
+end
+
 -- Drives the LCD: messages time out and long preset names scroll.
 local timer = iup.timer{ time = 120 }
 function timer:action_cb()
@@ -465,7 +474,7 @@ end
 -- Open at the board's own size, or smaller when the screen can't fit it.
 local sw, sh = (iup.GetGlobal("SCREENSIZE") or "1000x720"):match("(%d+)x(%d+)")
 local fit = math.min(1, 0.9 * tonumber(sw) / W, 0.85 * tonumber(sh) / H)
-dlg = iup.dialog{ cv; title = title, minsize = "500x360",
+dlg = iup.dialog{ cv; title = title, icon = windowIcon(), minsize = "500x360",
                         rastersize = string.format("%dx%d", math.floor(W * fit), math.floor(H * fit)) }
 
 function dlg:close_cb()

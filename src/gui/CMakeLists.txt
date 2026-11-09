@@ -77,6 +77,12 @@ if(IUP_BUNDLE_DIR)
     install(DIRECTORY ${IUP_BUNDLE_DIR}/ DESTINATION ${PANEL_LIB_DIR} USE_SOURCE_PERMISSIONS)
 endif()
 
+if(UNIX AND NOT APPLE)
+    # The application menu entry and its icon
+    install(FILES ${CMAKE_SOURCE_DIR}/pkg/linux/pitchshifter.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/pkg/linux/pitchshifter.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps)
+endif()
+
 #############################################################################
 ## pitchshifter-gui launcher, run target and smoke test
 ## (on Windows PitchShifter.exe starts the panel itself: there's no sh to run this)
@@ -118,13 +124,17 @@ if(LUA_EXECUTABLE AND NOT WIN32)
     if(TARGET PitchShifter)
         add_dependencies(run-gui PitchShifter)   # a failed compile opens nothing
     endif()
+endif()
 
-    if(BUILD_TESTS)
-        set(SMOKE_DIR ${CMAKE_CURRENT_BINARY_DIR}/pcore_smoke)
-        file(MAKE_DIRECTORY ${SMOKE_DIR})
-        add_test(NAME pcore_smoke
-            COMMAND ${LUA_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/pcore_smoke.lua $<TARGET_FILE_DIR:pcore> --scratch
-            WORKING_DIRECTORY ${SMOKE_DIR}
-        )
-    endif()
+if(LUA_EXECUTABLE AND BUILD_TESTS)
+    # Both save presets.txt where they run, so each gets a disposable directory
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pcore_smoke ${CMAKE_CURRENT_BINARY_DIR}/panel_smoke)
+    add_test(NAME pcore_smoke
+        COMMAND ${LUA_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/pcore_smoke.lua $<TARGET_FILE_DIR:pcore> --scratch
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/pcore_smoke
+    )
+    add_test(NAME panel_smoke
+        COMMAND ${LUA_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/panel_smoke.lua $<TARGET_FILE_DIR:pcore> ${CMAKE_CURRENT_SOURCE_DIR}/main.lua --scratch
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/panel_smoke
+    )
 endif()
