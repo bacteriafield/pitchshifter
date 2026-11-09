@@ -46,7 +46,12 @@ local here = (arg and arg[0] or ""):match("^(.*)[/\\]") or "."
 package.cpath = here .. "/../../build/lib/?.so;" .. package.cpath
 package.path = here .. "/?.lua;" .. here .. "/?/init.lua;" .. package.path
 
-require "iuplua"
+-- One line, not a traceback: PitchShifter falls back to its prompt after this.
+local iupOk, iupErr = pcall(require, "iuplua")
+if not iupOk then
+    io.stderr:write("pitchshifter: the front panel can't start: ", tostring(iupErr):match("[^\n]*"), "\n")
+    os.exit(1)
+end
 iup.SetGlobal("UTF8MODE", "YES")
 
 local loaded, pcore = pcall(require, "pcore")

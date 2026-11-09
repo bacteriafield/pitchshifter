@@ -60,14 +60,28 @@ if(APPLE)
     target_link_options(pcore PRIVATE -undefined dynamic_lookup)
 endif()
 
-install(TARGETS pcore LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/pitchshifter)
+if(WIN32)
+    # A DLL can't leave the Lua API undefined, so here it does link Lua: the
+    # lua54.dll the interpreter uses. Beside the .exe is where Windows finds DLLs.
+    find_library(LUA_LIBRARY NAMES lua5.4 lua54 lua)
+    target_link_libraries(pcore PRIVATE ${LUA_LIBRARY})
+    set(PANEL_LIB_DIR ${CMAKE_INSTALL_BINDIR})
+else()
+    set(PANEL_LIB_DIR ${CMAKE_INSTALL_LIBDIR}/pitchshifter)
+endif()
+
+install(TARGETS pcore LIBRARY DESTINATION ${PANEL_LIB_DIR})
 install(FILES main.lua DESTINATION ${CMAKE_INSTALL_DATADIR}/pitchshifter)
 install(DIRECTORY view DESTINATION ${CMAKE_INSTALL_DATADIR}/pitchshifter)
+if(IUP_BUNDLE_DIR)
+    install(DIRECTORY ${IUP_BUNDLE_DIR}/ DESTINATION ${PANEL_LIB_DIR} USE_SOURCE_PERMISSIONS)
+endif()
 
 #############################################################################
 ## pitchshifter-gui launcher, run target and smoke test
+## (on Windows PitchShifter.exe starts the panel itself: there's no sh to run this)
 
-if(LUA_EXECUTABLE)
+if(LUA_EXECUTABLE AND NOT WIN32)
     # Build tree: the script straight from the sources, the module from build/lib
     set(PCORE_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
     set(GUI_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)

@@ -16,7 +16,7 @@
 
 ## Installation
 
-The installers download the latest [release](https://github.com/bacteriafield/pitchshifter/releases) build and its runtime dependencies (PortAudio, Lua 5.4).
+The installers download the latest [release](https://github.com/bacteriafield/pitchshifter/releases) build and its runtime dependencies (PortAudio, Lua 5.4, GTK 3).
 
 **Linux (x86_64) / macOS (Apple Silicon)** — apt, dnf, pacman, zypper or Homebrew
 
@@ -70,9 +70,9 @@ choco install pitchshifter
 scoop bucket add bacteriafield https://github.com/bacteriafield/scoop-bucket; scoop install pitchshifter
 ```
 
-The front panel (`pitchshifter-gui`, Linux and macOS) also needs [IUP](https://www.tecgraf.puc-rio.br/iup/) for Lua 5.4 (`iuplua`), which isn't in the package managers.
+Every release carries the front panel and its copy of [IUP](https://www.tecgraf.puc-rio.br/iup/), so `PitchShifter` opens it right after installing.
 
-**From source** (C++17 compiler, CMake, pkg-config, PortAudio, Lua 5.4 headers for the GUI)
+**From source** (C++17 compiler, CMake, pkg-config, PortAudio, Lua 5.4 headers for the GUI, and IUP for Lua 5.4 to open it)
 
 ```bash
 cmake -S . -B build && cmake --build build && sudo cmake --install build
