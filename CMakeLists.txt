@@ -27,7 +27,7 @@ set(CORE_DIR ${SRC_DIR}/core)
 
 #############################################################################
 ##
-##   cmake -S . -B build && cmake --build build     build everything
+##   cmake -S . -B build && cmake --build build     build everything, then open the front panel
 ##   ctest --test-dir build --output-on-failure     run the checks
 ##   cmake --build build --target run-gui           open the front panel
 ##
@@ -41,6 +41,7 @@ option(ENABLE_QT   "Build the Qt object helpers (src/core/object.cpp)" ON)
 option(BUILD_CLI   "Build the PitchShifter command-line program" ON)
 option(BUILD_GUI   "Build the Lua/IUP front panel (needs Lua 5.4 headers)" ON)
 option(BUILD_TESTS "Register the ctest checks" ON)
+option(OPEN_GUI_AFTER_BUILD "Open the front panel at the end of every build" ON)
 
 set(VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(VERSION_MINOR ${PROJECT_VERSION_MINOR})

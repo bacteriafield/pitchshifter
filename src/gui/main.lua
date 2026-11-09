@@ -26,7 +26,8 @@
 --
 -- PitchShifter front panel, laid out after the DigiTech Vocal 300
 -- (docs/static/digitech-vocal300.png). Drawn with IupDraw on one canvas so it
--- can look like the hardware instead of a stock GTK form.
+-- can look like the hardware instead of a stock GTK form. Each part of the
+-- panel has its own folder under view/; this file is the state and the wiring.
 --
 --   cmake --build build --target pcore
 --   lua src/gui/main.lua
@@ -43,6 +44,7 @@
 
 local here = (arg and arg[0] or ""):match("^(.*)[/\\]") or "."
 package.cpath = here .. "/../../build/lib/?.so;" .. package.cpath
+package.path = here .. "/?.lua;" .. here .. "/?/init.lua;" .. package.path
 
 require "iuplua"
 iup.SetGlobal("UTF8MODE", "YES")
@@ -54,6 +56,14 @@ if not loaded then
         "\n\nBuild it with:\n    cmake --build build --target pcore")
     return
 end
+
+local draw = require "view.draw"
+local header = require "view.header"
+local matrix = require "view.matrix"
+local controls = require "view.controls"
+local switches = require "view.switches"
+local pedal = require "view.pedal"
+local cv, W, H = draw.cv, draw.W, draw.H
 
 local audioOk, audioErr, presetErr = pcore.open{ rate = 48000, block = 512, inputs = 1, outputs = 2 }
 
@@ -308,247 +318,29 @@ end
 -- Drawing. Everything is laid out on a 1000 x 720 board and scaled to fit.
 ------------------------------------------------------------------------------
 
-local W, H = 1000, 720
-local ROW_Y0, ROW_H = 180, 30
-local LED_X = 165
-local CELL_X0, CELL_W = 180, 100
-local KNOB_X, MASTER_X = { 180, 280, 380, 480 }, 580
-local KNOB_Y, KNOB_R = 520, 30
-local SELECT_BTN = { 58, 442, 112, 460 }
-local STORE_BTN = { 618, 442, 672, 460 }
-local SWITCH_X = { 145, 345, 545 }
-local SWITCH_Y1, SWITCH_Y2 = 590, 680
-local PEDAL = { 722, 60, 952, 670 }
-
-local SANS, SANS_B, MONO_B = "DejaVu Sans,", "DejaVu Sans, Bold", "DejaVu Sans Mono, Bold"
-
-local C = {
-    bg = "26 22 34", body = "116 66 164", bodyDark = "78 40 118", bodyLight = "142 94 190", well = "96 52 140",
-    face = "26 24 30", rowSel = "70 46 104",
-    lcdBg = "12 26 14", lcdGhost = "20 42 22", lcdOn = "110 240 120",
-    numBg = "34 10 10", numGhost = "54 16 15", numOn = "250 70 55",
-    white = "238 238 242", grey = "150 150 158", strip = "176 176 184", stripText = "30 30 36",
-    cell = "210 210 216", cellSel = "250 236 150", cellEmpty = "64 60 72", cellText = "24 24 28",
-    ledOn = "255 50 40", ledOff = "70 22 22",
-    shadow = "60 30 90", knobRim = "18 18 20", knob = "46 46 52", pointer = "245 245 245", pointerDim = "110 110 118",
-    button = "36 36 40", buttonHi = "90 90 98",
-    switch = "30 30 33", switchTop = "54 54 60", switchPressed = "84 84 92",
-    pedal = "30 30 32", pedalLine = "46 46 50", pedalMark = "170 130 230",
+-- What the views read to draw themselves.
+local panel = {
+    state = state, rows = ROWS,
+    rowKnobs = rowKnobs, fmt = fmt, knobT = knobT, whammyActive = whammyActive,
 }
-
-local cv = iup.canvas{ border = "NO" }
-local S = { k = 1, ox = 0, oy = 0 }
-
-local function X(x) return math.floor(S.ox + x * S.k + 0.5) end
-local function Y(y) return math.floor(S.oy + y * S.k + 0.5) end
-
-local function rect(x1, y1, x2, y2, rgb, stroke)
-    cv.drawcolor = rgb
-    cv.drawstyle = stroke and "STROKE" or "FILL"
-    cv.drawlinewidth = 1
-    iup.DrawRectangle(cv, X(x1), Y(y1), X(x2), Y(y2))
-end
-
-local function circle(cx, cy, r, rgb)
-    cv.drawcolor = rgb
-    cv.drawstyle = "FILL"
-    iup.DrawArc(cv, X(cx - r), Y(cy - r), X(cx + r), Y(cy + r), 0, 360)
-end
-
--- A trapezoid with horizontal top and bottom edges, filled one pixel row at a
--- time. ponytail: iup.DrawPolygon smeared its fill across the panel on this
--- IUP 3.32 / GTK build however the points were passed, and the footswitches
--- are the only shape that needs this.
-local function trapezoid(y1, top1, top2, y2, bot1, bot2, rgb)
-    cv.drawcolor = rgb
-    cv.drawstyle = "STROKE"
-    cv.drawlinewidth = 1
-    local sy1, sy2 = Y(y1), Y(y2)
-    for sy = sy1, sy2 do
-        local f = (sy2 > sy1) and (sy - sy1) / (sy2 - sy1) or 0
-        iup.DrawLine(cv, X(top1 + (bot1 - top1) * f), sy, X(top2 + (bot2 - top2) * f), sy)
-    end
-end
-
-local function line(x1, y1, x2, y2, rgb, width)
-    cv.drawcolor = rgb
-    cv.drawstyle = "STROKE"
-    cv.drawlinewidth = math.max(1, math.floor(width * S.k + 0.5))
-    iup.DrawLine(cv, X(x1), Y(y1), X(x2), Y(y2))
-end
-
--- (x, y) is the anchor point; y is the vertical centre of the text.
-local function text(s, x, y, rgb, font, size, align)
-    cv.drawfont = font .. " " .. math.max(5, math.floor(size * S.k + 0.5))
-    cv.drawcolor = rgb
-    local tw, th = iup.DrawGetTextSize(cv, s)
-    local px = X(x)
-    if align == "center" then px = px - tw // 2 elseif align == "right" then px = px - tw end
-    iup.DrawText(cv, s, px, Y(y) - th // 2)
-end
-
--- An LCD: the dim "8" ghosts and the lit characters start at the same x.
--- Centring each string on its own measured width put them half a character apart.
-local function lcd(ghost, s, cx, cy, ghostRgb, onRgb)
-    cv.drawfont = MONO_B .. " " .. math.max(5, math.floor(34 * S.k + 0.5))
-    local gw, gh = iup.DrawGetTextSize(cv, ghost)
-    local x, y = X(cx) - gw // 2, Y(cy) - gh // 2
-    cv.drawcolor = ghostRgb
-    iup.DrawText(cv, ghost, x, y)
-    cv.drawcolor = onRgb
-    iup.DrawText(cv, s, x, y)
-end
-
-local function lcdText()
-    local s
-    if state.msg then
-        s = state.msg
-    elseif state.bypassed then
-        s = "BYPASS"
-    else
-        local p = state.presets[state.cur]
-        s = p and p.name or "------"
-    end
-    s = s:upper()
-    if #s > 6 then
-        local loop = s .. "   "
-        local off = state.scroll % #loop
-        s = (loop .. loop):sub(off + 1, off + 6)
-    end
-    return s .. string.rep(" ", 6 - #s)
-end
-
-local function drawHeader()
-    rect(50, 60, 680, 160, C.face)
-    text("VOCAL", 108, 94, C.white, SANS_B, 19, "center")
-    text("300", 108, 126, C.white, SANS_B, 19, "center")
-
-    rect(170, 72, 450, 148, C.lcdBg)
-    lcd("888888", lcdText(), 310, 110, C.lcdGhost, C.lcdOn)
-
-    rect(458, 72, 552, 148, C.numBg)
-    lcd("88", string.format("%02d", state.cur % 100), 505, 110, C.numGhost, C.numOn)
-
-    text("VOCAL", 568, 90, C.white, SANS_B, 11, "left")
-    text("EFFECTS", 568, 110, C.white, SANS_B, 11, "left")
-    text("PROCESSOR", 568, 130, C.white, SANS_B, 11, "left")
-end
-
-local function drawMatrix()
-    rect(50, 170, 680, 398, C.face)
-    for i, r in ipairs(ROWS) do
-        local y1 = ROW_Y0 + (i - 1) * ROW_H
-        local yc = y1 + ROW_H / 2
-        local selected = i == state.row
-        if selected then rect(54, y1 + 2, 676, y1 + ROW_H - 2, C.rowSel) end
-
-        text(r.name, 62, yc, C.white, SANS_B, 10, "left")
-        circle(LED_X, yc, 6, (state.vals[r.on] or 0) >= 0.5 and C.ledOn or C.ledOff)
-
-        local ks = rowKnobs(i)
-        for j = 1, 4 do
-            local k = ks[j]
-            local x1, x2 = CELL_X0 + (j - 1) * CELL_W + 4, CELL_X0 + j * CELL_W - 4
-            rect(x1, y1 + 7, x2, y1 + ROW_H - 7, k and (selected and C.cellSel or C.cell) or C.cellEmpty)
-            if k then
-                local label = selected and (k[1] .. " " .. fmt(k, state.vals[k[2]])) or k[1]
-                iup.DrawSetClipRect(cv, X(x1), Y(y1 + 7), X(x2), Y(y1 + ROW_H - 7))
-                text(label, (x1 + x2) / 2, yc, C.cellText, SANS_B, 8, "center")
-                iup.DrawResetClip(cv)
-            end
-        end
-    end
-end
-
-local function drawButton(r, pressed)
-    rect(r[1], r[2], r[3], r[4], pressed and C.buttonHi or C.button)
-    line(r[1], r[2], r[3], r[2], C.buttonHi, 1)
-end
-
-local function drawKnob(cx, cy, t)
-    circle(cx, cy + 3, KNOB_R + 4, C.shadow)
-    for s = 0, 10 do
-        local a = math.rad(-135 + 27 * s)
-        line(cx + math.sin(a) * (KNOB_R + 8), cy - math.cos(a) * (KNOB_R + 8),
-             cx + math.sin(a) * (KNOB_R + 13), cy - math.cos(a) * (KNOB_R + 13), C.shadow, 2)
-    end
-    circle(cx, cy, KNOB_R + 2, C.knobRim)
-    circle(cx, cy, KNOB_R - 3, C.knob)
-    -- A knob whose value the preset doesn't define points at noon, dimmed.
-    local a = math.rad(-135 + 270 * (t or 0.5))
-    line(cx + math.sin(a) * 6, cy - math.cos(a) * 6,
-         cx + math.sin(a) * (KNOB_R - 7), cy - math.cos(a) * (KNOB_R - 7),
-         t and C.pointer or C.pointerDim, 4)
-end
-
-local function drawControls()
-    rect(50, 408, 680, 432, C.strip)
-    local ks = rowKnobs(state.row)
-    text("SELECT", 85, 420, C.stripText, SANS_B, 9, "center")
-    for j, x in ipairs(KNOB_X) do
-        if ks[j] then text(ks[j][1], x, 420, C.stripText, SANS_B, 9, "center") end
-    end
-    text("MASTER", MASTER_X, 420, C.stripText, SANS_B, 9, "center")
-    text("STORE", 645, 420, C.stripText, SANS_B, 9, "center")
-
-    drawButton(SELECT_BTN, state.pressed == "select")
-    drawButton(STORE_BTN, state.pressed == "store")
-
-    for j, x in ipairs(KNOB_X) do
-        if ks[j] then drawKnob(x, KNOB_Y, knobT(j)) end
-    end
-    drawKnob(MASTER_X, KNOB_Y, knobT("master"))
-end
-
-local function drawSwitches()
-    local cx1, cx2, cx3 = SWITCH_X[1], SWITCH_X[2], SWITCH_X[3]
-    line(cx1 - 22, 566, cx1 + 22, 566, C.white, 2)
-    line(cx1 + 22, 566, cx1, 580, C.white, 2)
-    line(cx1, 580, cx1 - 22, 566, C.white, 2)
-    line(cx2 - 22, 580, cx2 + 22, 580, C.white, 2)
-    line(cx2 + 22, 580, cx2, 566, C.white, 2)
-    line(cx2, 566, cx2 - 22, 580, C.white, 2)
-    text("BYPASS", cx3, 573, C.white, SANS_B, 12, "center")
-
-    for j, cx in ipairs(SWITCH_X) do
-        local top = state.pressed == ("switch" .. j) and C.switchPressed or C.switchTop
-        trapezoid(SWITCH_Y1, cx - 72, cx + 72, SWITCH_Y1 + 55, cx - 85, cx + 85, top)
-        rect(cx - 85, SWITCH_Y1 + 55, cx + 85, SWITCH_Y2, C.switch)
-        text("PITCHSHIFTER", cx, SWITCH_Y1 + 30, C.grey, SANS_B, 9, "center")
-    end
-end
-
-local function drawPedal()
-    rect(700, 30, 968, 690, C.well)
-    rect(PEDAL[1], PEDAL[2], PEDAL[3], PEDAL[4], C.pedal)
-    for y = PEDAL[2] + 14, PEDAL[4] - 14, 10 do
-        line(PEDAL[1] + 10, y, PEDAL[3] - 10, y, C.pedalLine, 1)
-    end
-    rect(PEDAL[1] - 10, 344, PEDAL[3] + 10, 390, C.body)
-    text("PITCHSHIFTER", (PEDAL[1] + PEDAL[3]) / 2, 367, C.white, SANS_B, 13, "center")
-
-    local py = PEDAL[4] - state.pedal * (PEDAL[4] - PEDAL[2])
-    rect(PEDAL[1] + 6, py - 3, PEDAL[3] - 6, py + 3, whammyActive() and C.ledOn or C.pedalMark)
-end
 
 function cv:action()
     iup.DrawBegin(self)
     local w, h = iup.DrawGetSize(self)
     if w > 0 and h > 0 then
-        S.k = math.min(w / W, h / H)
-        S.ox, S.oy = (w - W * S.k) / 2, (h - H * S.k) / 2
-        self.drawcolor, self.drawstyle = C.bg, "FILL"
+        draw.fit(w, h)
+        self.drawcolor, self.drawstyle = draw.C.bg, "FILL"
         iup.DrawRectangle(self, 0, 0, w, h)
 
-        rect(20, 20, 980, 700, C.bodyDark)
-        rect(26, 24, 974, 694, C.body)
-        rect(26, 24, 974, 30, C.bodyLight)
+        draw.rect(20, 20, 980, 700, draw.C.bodyDark)
+        draw.rect(26, 24, 974, 694, draw.C.body)
+        draw.rect(26, 24, 974, 30, draw.C.bodyLight)
 
-        drawHeader()
-        drawMatrix()
-        drawControls()
-        drawSwitches()
-        drawPedal()
+        header.draw(panel)
+        matrix.draw(panel)
+        controls.draw(panel)
+        switches.draw(panel)
+        pedal.draw(panel)
     end
     iup.DrawEnd(self)
 end
@@ -557,39 +349,16 @@ end
 -- Mouse
 ------------------------------------------------------------------------------
 
-local function inside(r, x, y, pad)
-    return x >= r[1] - pad and x <= r[3] + pad and y >= r[2] - pad and y <= r[4] + pad
-end
-
 local function hit(vx, vy)
-    for i = 1, #ROWS do
-        local y1 = ROW_Y0 + (i - 1) * ROW_H
-        if vy >= y1 and vy < y1 + ROW_H and vx >= 54 and vx <= 676 then
-            if math.abs(vx - LED_X) <= 12 then return "led", i end
-            return "row", i
-        end
+    for _, view in ipairs{ matrix, controls, switches, pedal } do
+        local what, i = view.hit(panel, vx, vy)
+        if what then return what, i end
     end
-    if inside(SELECT_BTN, vx, vy, 6) then return "select" end
-    if inside(STORE_BTN, vx, vy, 6) then return "store" end
-    for j, x in ipairs(KNOB_X) do
-        if (vx - x) ^ 2 + (vy - KNOB_Y) ^ 2 <= (KNOB_R + 10) ^ 2 then return "knob", j end
-    end
-    if (vx - MASTER_X) ^ 2 + (vy - KNOB_Y) ^ 2 <= (KNOB_R + 10) ^ 2 then return "knob", "master" end
-    for j, x in ipairs(SWITCH_X) do
-        if vx >= x - 85 and vx <= x + 85 and vy >= SWITCH_Y1 and vy <= SWITCH_Y2 then return "switch", j end
-    end
-    if inside(PEDAL, vx, vy, 0) then return "pedal" end
-end
-
-local function virtual(x, y) return (x - S.ox) / S.k, (y - S.oy) / S.k end
-
-local function pedalAt(vy)
-    return 1 - (vy - PEDAL[2]) / (PEDAL[4] - PEDAL[2])
 end
 
 function cv:button_cb(button, pressed, x, y, status)
     if button ~= iup.BUTTON1 then return iup.DEFAULT end
-    local vx, vy = virtual(x, y)
+    local vx, vy = draw.virtual(x, y)
 
     if pressed == 1 then
         local what, i = hit(vx, vy)
@@ -612,7 +381,7 @@ function cv:button_cb(button, pressed, x, y, status)
             else toggleBypass() end
         elseif what == "pedal" then
             state.drag = { pedal = true }
-            setPedal(pedalAt(vy))
+            setPedal(pedal.valueAt(vy))
         end
     else
         local wasStore = state.pressed == "store"
@@ -628,10 +397,10 @@ function cv:motion_cb(x, y, status)
     local d = state.drag
     if not d or not iup.isbutton1(status) then return iup.DEFAULT end
     if d.pedal then
-        local _, vy = virtual(x, y)
-        setPedal(pedalAt(vy))
+        local _, vy = draw.virtual(x, y)
+        setPedal(pedal.valueAt(vy))
     else
-        local travel = (iup.isshift(status) and 1000 or 200) * S.k   -- pixels for the full sweep
+        local travel = (iup.isshift(status) and 1000 or 200) * draw.S.k   -- pixels for the full sweep
         turnKnob(d.knob, clamp(d.t + (d.y - y) / travel, 0, 1))
     end
     iup.Update(self)
@@ -639,7 +408,7 @@ function cv:motion_cb(x, y, status)
 end
 
 function cv:wheel_cb(delta, x, y, status)
-    local what, key = hit(virtual(x, y))
+    local what, key = hit(draw.virtual(x, y))
     local k = what == "knob" and knobSpec(key)
     if not k then return iup.DEFAULT end
     local step = k.step and k.step / (k[4] - k[3]) or 0.02

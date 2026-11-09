@@ -27,6 +27,11 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include "core/audio/audio_engine.h"
 #include "core/audio/preset.h"
 #include "core/audio/effects/voice.h"
@@ -70,7 +75,34 @@ static void printHelp() {
         "  quit                stop\n\n";
 }
 
-int main() {
+// Runs the front panel, the pitchshifter-gui launcher beside this binary, until
+// its window closes. False if it couldn't start: no launcher, no iuplua, no display.
+static bool openPanel(char** argv) {
+#ifdef _WIN32
+    (void)argv;
+    return false;   // the panel is not built on Windows
+#else
+    const std::string self(argv[0]);
+    const size_t slash = self.rfind('/');
+    const std::string launcher = (slash == std::string::npos ? "" : self.substr(0, slash + 1)) + "pitchshifter-gui";
+
+    const pid_t pid = fork();
+    if (pid < 0) return false;
+    if (pid == 0) {
+        execvp(launcher.c_str(), argv);
+        _exit(127);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return !(WIFEXITED(status) && WEXITSTATUS(status) != 0);
+#endif
+}
+
+int main(int argc, char** argv) {
+    // The front panel is the program; --cli, or a panel that can't start, gets the prompt.
+    if (!(argc > 1 && std::string(argv[1]) == "--cli") && openPanel(argv)) return 0;
+
     Logger* logger = logger_create("pitchshifter.log", true, true, true);
     logger_set_bitmask(Error | Warning | Info | Debug);
 

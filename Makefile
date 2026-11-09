@@ -1,6 +1,8 @@
 INCLUDE=src/core/config.h
 
-all: build run
+.PHONY: all build run clean
+
+all: build
 
 run:
 	./build/bin/PitchShifter
