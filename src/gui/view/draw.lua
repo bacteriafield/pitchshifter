@@ -28,10 +28,16 @@
 -- coordinates on a 1000 x 720 board and scale them to the window.
 --
 
+-- The LCD overlays lit digits on ghost digits, so it needs a true monospace:
+-- each system's own, which is always installed there.
+local FONTS = { Win32 = { "Segoe UI", "Consolas" }, Darwin = { "Helvetica Neue", "Menlo" } }
+local sans, mono = table.unpack(FONTS[iup.GetGlobal("DRIVER")] or FONTS[iup.GetGlobal("SYSTEM")]
+                                or { "DejaVu Sans", "DejaVu Sans Mono" })
+
 local draw = {
     W = 1000, H = 720,
-    SANS_B = "DejaVu Sans, Bold",
-    MONO_B = "DejaVu Sans Mono, Bold",
+    SANS_B = sans .. ", Bold",
+    MONO_B = mono .. ", Bold",
     S = { k = 1, ox = 0, oy = 0 },
     cv = iup.canvas{ border = "NO" },
     C = {
